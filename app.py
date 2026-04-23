@@ -4,142 +4,129 @@ import plotly.express as px
 from datetime import datetime
 import hashlib
 
-# --- KONFIGURASI HALAMAN ---
-st.set_page_config(page_title="GMP Audit & Analytics System", layout="wide")
+# --- KONFIGURASI ---
+st.set_page_config(page_title="GMP Audit Master System", layout="wide")
 
-# --- 1. PERSISTENCE LAYER (Simulasi Database) ---
-# Menggunakan session_state agar data tersimpan selama aplikasi berjalan
-if 'audit_history' not in st.session_state:
-    # Data awal untuk simulasi dashboard
-    st.session_state.audit_history = []
+# --- 1. DATABASE LENGKAP (Session State) ---
+if 'master_audit_data' not in st.session_state:
+    st.session_state.master_audit_data = [] # Menyimpan list of dictionaries (Lengkap)
 
-# --- 2. FUNGSI UNIK ID (Mencegah Error Duplicate Widget) ---
+# --- 2. FUNGSI UNIK ID ---
 def generate_id(cat, area, no, crit):
     raw_str = f"{cat}{area}{no}{crit}"
     return hashlib.md5(raw_str.encode()).hexdigest()
 
-# --- 3. SIDEBAR NAVIGATION ---
-st.sidebar.title("🛡️ GMP Management")
-menu = st.sidebar.radio("Pilih Module", ["📝 Audit Baru", "📊 Dashboard & Comparison", "📁 Database Report Master"])
+# --- 3. NAVIGATION ---
+st.sidebar.title("🛡️ GMP Digital Hub")
+menu = st.sidebar.radio("Pilih Module", ["📝 Audit Baru", "📁 Data Master & Report", "📊 Dashboard Analisis"])
 
 # --- 4. MODULE: AUDIT BARU ---
 if menu == "📝 Audit Baru":
-    st.title("Input Audit Keamanan Pangan Baru")
+    st.title("Input Audit GMP Lengkap")
     
     with st.sidebar:
-        st.header("Konfigurasi")
         uploaded_file = st.file_uploader("Upload Template Checklist (CSV)", type=["csv"])
         st.divider()
-        st.header("Informasi Audit")
-        lokasi = st.selectbox("Lokasi Unit", ["Satelite Kitchen NICE PIK2", "Central Kitchen Hub", "Outlet Retail"])
+        lokasi = st.selectbox("Lokasi Unit", ["Satelite Kitchen NICE PIK2", "Central Kitchen Hub"])
         auditor = st.text_input("Nama Auditor")
-        tanggal_audit = st.date_input("Tanggal Audit", datetime.now())
+        tanggal = st.date_input("Tanggal Audit", datetime.now())
 
     if uploaded_file:
-        # Menggunakan delimiter ; sesuai template Anda
         df = pd.read_csv(uploaded_file, sep=';')
+        temp_audit_entries = [] # Menampung sementara baris per baris
         total_deduction = 0
-        findings_summary = []
 
         for kategori, group in df.groupby('Kategori', sort=False):
-            with st.expander(f"📂 Kategori: {kategori}", expanded=True):
+            with st.expander(f"📂 {kategori}", expanded=True):
                 for _, row in group.iterrows():
-                    # Generate ID unik untuk menghindari DuplicateWidgetID
                     u_id = generate_id(kategori, row['Area'], row['No'], row['Kriteria Penilaian'])
+                    st.markdown(f"**{row['No']} {row['Kriteria Penilaian']}**")
                     
-                    st.markdown(f"**{row['No']} {row['Kriteria Penilaian']}** (Area: {row['Area']})")
-                    col1, col2, col3 = st.columns([2, 3, 2])
-                    
-                    with col1:
-                        res = st.radio("Hasil", ["OK", "Minor", "Major", "Kritis"], key=f"s_{u_id}", horizontal=True)
-                    with col2:
-                        note = st.text_area("Detail Temuan", key=f"n_{u_id}", height=70, placeholder="Wajib dicatat jika ada temuan...")
-                    with col3:
-                        img = st.file_uploader("Ambil/Upload Foto", type=['jpg','png','jpeg'], key=f"i_{u_id}")
-                        if img: st.image(img, width=150)
+                    c1, c2, c3 = st.columns([2, 3, 2])
+                    with c1:
+                        res = st.radio("Status", ["OK", "Minor", "Major", "Kritis"], key=f"s_{u_id}", horizontal=True)
+                    with c2:
+                        note = st.text_area("Catatan Temuan", key=f"n_{u_id}", height=70)
+                    with c3:
+                        img = st.file_uploader("Foto Bukti", type=['jpg','png','jpeg'], key=f"i_{u_id}")
 
-                    # Logic Scoring sesuai standar Anda
+                    # Hitung Skor
                     points = {"OK": 0, "Minor": -10, "Major": -20, "Kritis": -30}
                     total_deduction += points[res]
-                    
-                    if res != "OK":
-                        findings_summary.append({
-                            "Kategori": kategori, "No": row['No'], "Status": res, "Detail": note
-                        })
 
-        if st.button("💾 SIMPAN HASIL AUDIT KE DATABASE", use_container_width=True):
+                    # Masukkan ke list detail
+                    temp_audit_entries.append({
+                        "Kategori": kategori,
+                        "No": row['No'],
+                        "Area": row['Area'],
+                        "Kriteria": row['Kriteria Penilaian'],
+                        "Status": res,
+                        "Catatan": note,
+                        "Foto_Ada": "Ya" if img else "Tidak"
+                    })
+
+        if st.button("💾 SIMPAN KE DATA MASTER", use_container_width=True):
             skor_akhir = max(0, 1000 + total_deduction)
             grade = "A" if skor_akhir >= 860 else "B" if skor_akhir >= 710 else "C" if skor_akhir >= 610 else "D"
             
-            # Record Data untuk Dashboard
-            entry_audit = {
+            # Bungkus semua detail ke dalam satu record master
+            master_record = {
+                "Audit_ID": f"AUD-{datetime.now().strftime('%Y%m%d%H%M')}",
                 "Lokasi": lokasi,
-                "Tanggal": str(tanggal_audit),
+                "Tanggal": str(tanggal),
                 "Auditor": auditor,
-                "Skor": skor_akhir,
+                "Skor_Akhir": skor_akhir,
                 "Grade": grade,
-                "Total Temuan": len(findings_summary)
+                "Detail_Penilaian": temp_audit_entries # Menyimpan list di dalam kolom
             }
-            st.session_state.audit_history.append(entry_audit)
-            
-            st.success(f"Audit Berhasil Disimpan! Skor: {skor_akhir} | Grade: {grade}")
-            if findings_summary:
-                st.subheader("📋 Ringkasan Temuan Lapangan")
-                st.table(pd.DataFrame(findings_summary))
-    else:
-        st.info("Silakan unggah file 'Template Checklist.csv' di sidebar untuk memulai.")
+            st.session_state.master_audit_data.append(master_record)
+            st.success("Data Master Berhasil Disimpan Lengkap dengan Seluruh Penilaian!")
 
-# --- 5. MODULE: DASHBOARD & COMPARISON ---
-elif menu == "📊 Dashboard & Comparison":
-    st.title("Dashboard Analisis & Perbandingan")
+# --- 5. MODULE: DATA MASTER & REPORT ---
+elif menu == "📁 Data Master & Report":
+    st.title("Data Master Audit GMP")
     
-    if st.session_state.audit_history:
-        df_hist = pd.DataFrame(st.session_state.audit_history)
-        df_hist['Tanggal'] = pd.to_datetime(df_hist['Tanggal'])
-        
-        target_loc = st.selectbox("Pilih Lokasi untuk Analisis", df_hist['Lokasi'].unique())
-        df_loc = df_hist[df_hist['Lokasi'] == target_loc].sort_values('Tanggal')
+    if st.session_state.master_audit_data:
+        # Tampilkan Ringkasan Terlebih Dahulu
+        df_master = pd.DataFrame(st.session_state.master_audit_data)
+        st.subheader("Semua History Audit")
+        st.dataframe(df_master.drop(columns=['Detail_Penilaian']), use_container_width=True)
 
-        if len(df_loc) >= 1:
-            # Mengambil Audit Terbaru (New) dan Audit Sebelumnya (Last)
-            new_audit = df_loc.iloc[-1]
-            
-            st.divider()
-            st.subheader(f"Statistik Terakhir: {target_loc}")
-            c1, c2, c3 = st.columns(3)
+        st.divider()
+        st.subheader("🔍 Lihat Detail Form Per Audit")
+        selected_audit = st.selectbox("Pilih ID Audit untuk Melihat Form Lengkap", df_master['Audit_ID'])
+        
+        # Tampilkan detail penilaian dari audit yang dipilih
+        detail_data = next(item for item in st.session_state.master_audit_data if item["Audit_ID"] == selected_audit)
+        df_detail = pd.DataFrame(detail_data["Detail_Penilaian"])
+        
+        st.write(f"**Laporan Detail untuk {detail_data['Lokasi']} (Tanggal: {detail_data['Tanggal']})**")
+        st.table(df_detail)
+        
+        # Download Button
+        csv = df_detail.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download Form Ini (CSV)", csv, f"Report_{selected_audit}.csv")
+    else:
+        st.info("Belum ada data di Master.")
+
+# --- 6. MODULE: DASHBOARD ANALISIS ---
+else:
+    st.title("📊 Dashboard Perbandingan")
+    if st.session_state.master_audit_data:
+        df_dash = pd.DataFrame(st.session_state.master_audit_data)
+        loc = st.selectbox("Pilih Lokasi", df_dash['Lokasi'].unique())
+        df_loc = df_dash[df_dash['Lokasi'] == loc].sort_values('Tanggal')
+
+        if len(df_loc) > 0:
+            new = df_loc.iloc[-1]
+            c1, c2 = st.columns(2)
             
             if len(df_loc) > 1:
-                last_audit = df_loc.iloc[-2]
-                diff_skor = int(new_audit['Skor'] - last_audit['Skor'])
-                diff_temuan = int(new_audit['Total Temuan'] - last_audit['Total Temuan'])
-                
-                c1.metric("Skor Audit Terbaru", f"{new_audit['Skor']}", delta=diff_skor)
-                c2.metric("Grade", new_audit['Grade'])
-                c3.metric("Total Temuan", f"{new_audit['Total Temuan']} Item", delta=diff_temuan, delta_color="inverse")
+                last = df_loc.iloc[-2]
+                c1.metric("Skor Audit Baru", new['Skor_Akhir'], delta=int(new['Skor_Akhir'] - last['Skor_Akhir']))
+                c2.metric("Perubahan Grade", new['Grade'], help="Dibandingkan dengan audit sebelumnya")
             else:
-                c1.metric("Skor Audit Terbaru", new_audit['Skor'])
-                c2.metric("Grade", new_audit['Grade'])
-                c3.metric("Total Temuan", f"{new_audit['Total Temuan']} Item")
+                c1.metric("Skor Audit Baru", new['Skor_Akhir'])
+                c2.metric("Grade", new['Grade'])
 
-            # Chart Tren Visual
-            st.subheader("Tren Performa Keamanan Pangan (Timeline)")
-            fig = px.line(df_loc, x="Tanggal", y="Skor", markers=True, text="Skor", 
-                          title=f"Grafik Skor GMP - {target_loc}", template="plotly_white")
-            fig.update_traces(textposition="bottom right")
-            st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("Data database masih kosong. Lakukan audit pertama Anda!")
-
-# --- 6. MODULE: DATABASE REPORT MASTER ---
-else:
-    st.title("📁 Master Data Report")
-    if st.session_state.audit_history:
-        full_df = pd.DataFrame(st.session_state.audit_history)
-        st.write("Semua data yang tersimpan di sistem:")
-        st.dataframe(full_df, use_container_width=True)
-        
-        # Fitur Export
-        csv_data = full_df.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Master Report (CSV)", data=csv_data, file_name="GMP_Master_Report.csv", mime="text/csv")
-    else:
-        st.info("Belum ada data di database.")
+            st.plotly_chart(px.line(df_loc, x="Tanggal", y="Skor_Akhir", markers=True, title="Tren Kualitas GMP"))
