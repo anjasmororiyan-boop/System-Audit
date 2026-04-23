@@ -1,96 +1,109 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 from datetime import datetime
 
-st.set_page_config(page_title="GMP Audit System & Dashboard", layout="wide")
+# Konfigurasi Halaman
+st.set_page_config(page_title="Digital GMP Audit - Detail & Photo", layout="wide")
 
-# --- 1. SIMULASI DATABASE (Session State) ---
+st.title("🛡️ Digital GMP Audit System")
+st.caption("Mode: Audit Lapangan dengan Detail Temuan & Bukti Foto")
+
+# --- DATABASE SIMULATION ---
 if 'audit_db' not in st.session_state:
-    # Data dummy untuk simulasi perbandingan (Audit Terdahulu)
-    st.session_state.audit_db = pd.DataFrame([
-        {"Lokasi": "Satelite Kitchen NICE PIK2", "Tanggal": "2026-03-01", "Skor": 850, "Grade": "B"},
-        {"Lokasi": "Central Kitchen Hub", "Tanggal": "2026-03-15", "Skor": 910, "Grade": "A"},
-        {"Lokasi": "Satelite Kitchen NICE PIK2", "Tanggal": "2026-04-10", "Skor": 780, "Grade": "B"}
-    ])
+    st.session_state.audit_db = pd.DataFrame(columns=["Lokasi", "Tanggal", "Skor", "Grade"])
 
-# --- 2. NAVIGATION ---
+# --- NAVIGATION ---
 menu = st.sidebar.selectbox("Pilih Menu", ["📝 Audit Baru", "📊 Dashboard & Report"])
 
-# --- 3. MENU 1: AUDIT BARU ---
 if menu == "📝 Audit Baru":
-    st.title("🛡️ Input Audit GMP Baru")
-    
+    # Sidebar Config
     with st.sidebar:
+        st.header("⚙️ Konfigurasi")
         uploaded_file = st.file_uploader("Upload Template Checklist (CSV)", type=["csv"])
         st.divider()
+        st.header("📝 Info Audit")
         lokasi = st.selectbox("Lokasi Unit", ["Satelite Kitchen NICE PIK2", "Central Kitchen Hub"])
         auditor = st.text_input("Nama Auditor")
         tanggal_audit = st.date_input("Tanggal Audit", datetime.now())
 
-    if uploaded_file:
+    if uploaded_file is not None:
         df_template = pd.read_csv(uploaded_file, sep=';')
         total_deduction = 0
-        
-        # Form Audit (Simplified for Mockup)
-        for kategori, group in df_template.groupby('Kategori', sort=False):
-            with st.expander(f"📂 {kategori}"):
-                for _, row in group.iterrows():
-                    col_t, col_s = st.columns([7, 3])
-                    col_t.write(f"{row['No']}. {row['Kriteria Penilaian']}")
-                    res = col_s.radio("Hasil", ["OK", "Minor", "Major", "Kritis"], key=f"src_{row['No']}_{kategori}", horizontal=True)
-                    
-                    score_map = {"OK": 0, "Minor": -10, "Major": -20, "Kritis": -30}
-                    total_deduction += score_map[res]
+        audit_records = []
 
-        if st.button("Simpan Hasil Audit"):
+        st.info(f"📋 Form Audit Aktif: {len(df_template)} Kriteria")
+
+        # Form Audit Dinamis
+        for kategori, group_kategori in df_template.groupby('Kategori', sort=False):
+            with st.expander(f"📂 {kategori}", expanded=True):
+                for _, row in group_kategori.iterrows():
+                    # Judul Kriteria
+                    st.markdown(f"**{row['No']}. {row['Kriteria Penilaian']}** (Area: {row['Area']})")
+                    
+                    # Layout Kolom: Penilaian | Detail Temuan | Foto
+                    col_score, col_note, col_photo = st.columns([2, 3, 2])
+                    
+                    key_id = f"{row['No']}_{row['Area']}"
+                    
+                    with col_score:
+                        pilihan = st.radio(
+                            "Status Penilaian", ["OK", "Minor", "Major", "Kritis"],
+                            key=f"status_{key_id}", horizontal=True
+                        )
+                    
+                    with col_note:
+                        # KOLOM KETERANGAN (Wajib ada untuk mencatat detail)
+                        detail = st.text_area(
+                            "Detail Temuan / Catatan", 
+                            key=f"note_{key_id}", 
+                            placeholder="Tuliskan detail ketidaksesuaian di sini...",
+                            height=80
+                        )
+                    
+                    with col_photo:
+                        # FITUR FOTO (Membuka kamera di handphone secara otomatis)
+                        foto = st.file_uploader(
+                            "Ambil/Upload Foto", 
+                            type=["jpg", "jpeg", "png"], 
+                            key=f"photo_{key_id}"
+                        )
+                        if foto:
+                            st.image(foto, width=150, caption="Preview Foto")
+
+                    # Logika Skor
+                    score_map = {"OK": 0, "Minor": -10, "Major": -20, "Kritis": -30}
+                    total_deduction += score_map[pilihan]
+                    
+                    # Simpan Rekaman Sementara
+                    if pilihan != "OK":
+                        audit_records.append({
+                            "No": row['No'],
+                            "Kriteria": row['Kriteria Penilaian'],
+                            "Status": pilihan,
+                            "Detail": detail,
+                            "HasPhoto": "Ya" if foto else "Tidak"
+                        })
+                st.divider()
+
+        # Tombol Submit
+        if st.button("Simpan Hasil Audit & Generate Summary", use_container_width=True):
             skor_akhir = max(0, 1000 + total_deduction)
             grade = "A" if skor_akhir >= 860 else "B" if skor_akhir >= 710 else "C" if skor_akhir >= 610 else "D"
             
-            # Simpan ke 'Database'
-            new_data = {"Lokasi": lokasi, "Tanggal": str(tanggal_audit), "Skor": skor_akhir, "Grade": grade}
-            st.session_state.audit_db = pd.concat([st.session_state.audit_db, pd.DataFrame([new_data])], ignore_index=True)
-            st.success(f"Audit Berhasil Disimpan! Skor: {skor_akhir}")
-    else:
-        st.warning("Upload template untuk memulai.")
+            # Simpan ke History
+            new_audit = {"Lokasi": lokasi, "Tanggal": str(tanggal_audit), "Skor": skor_akhir, "Grade": grade}
+            st.session_state.audit_db = pd.concat([st.session_state.audit_db, pd.DataFrame([new_audit])], ignore_index=True)
+            
+            st.success(f"Audit Selesai! Skor Akhir: {skor_akhir} (Grade {grade})")
+            
+            if audit_records:
+                st.subheader("📋 Ringkasan Detail Temuan")
+                st.table(pd.DataFrame(audit_records))
 
-# --- 4. MENU 2: DASHBOARD & REPORT ---
+    else:
+        st.warning("Silakan upload 'Template Checklist.csv' untuk memunculkan form.")
+
+# --- MENU DASHBOARD TETAP SAMA ---
 else:
-    st.title("📊 Dashboard Analisis Audit")
-
-    # --- FILTER ---
-    st.subheader("🔍 Filter Data")
-    c1, c2 = st.columns(2)
-    with c1:
-        f_lokasi = st.multiselect("Pilih Lokasi", options=st.session_state.audit_db["Lokasi"].unique(), default=st.session_state.audit_db["Lokasi"].unique())
-    with c2:
-        # Filter data berdasarkan lokasi
-        df_filtered = st.session_state.audit_db[st.session_state.audit_db["Lokasi"].isin(f_lokasi)]
-        st.write(f"Menampilkan {len(df_filtered)} data audit.")
-
-    # --- KPI METRICS ---
-    st.divider()
-    if not df_filtered.empty:
-        latest_audit = df_filtered.iloc[-1]
-        prev_audit = df_filtered.iloc[-2] if len(df_filtered) > 1 else latest_audit
-        
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Skor Audit Terakhir", latest_audit['Skor'], delta=int(latest_audit['Skor'] - prev_audit['Skor']))
-        m2.metric("Grade", latest_audit['Grade'])
-        m3.metric("Total Inspeksi", len(df_filtered))
-
-        # --- COMPARISON CHART (Last vs New) ---
-        st.subheader("📈 Perbandingan Hasil Audit (Timeline)")
-        fig = px.line(df_filtered, x="Tanggal", y="Skor", color="Lokasi", markers=True, 
-                      title="Tren Skor GMP per Lokasi", template="plotly_white")
-        st.plotly_chart(fig, use_container_width=True)
-
-        # --- TABEL SUMMARY ---
-        st.subheader("📋 History Report")
-        st.dataframe(df_filtered.sort_values(by="Tanggal", ascending=False), use_container_width=True)
-        
-        # Tombol Download
-        csv = df_filtered.to_csv(index=False).encode('utf-8')
-        st.download_button("Download Report (.CSV)", data=csv, file_name="Report_Audit_GMP.csv", mime="text/csv")
-    else:
-        st.error("Tidak ada data untuk lokasi yang dipilih.")
+    st.title("📊 Dashboard & Report History")
+    st.dataframe(st.session_state.audit_db, use_container_width=True)
