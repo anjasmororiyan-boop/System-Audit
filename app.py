@@ -67,8 +67,10 @@ if menu == "📝 Audit Baru":
                         "Status_Perbaikan": "Open" if res != "OK" else "N/A"
                     })
 
-        # --- SUMMARY & KALKULASI ---
+        # --- SUMMARY & KALKULASI DI BAWAH HASIL AUDIT ---
         st.divider()
+        st.subheader("📊 Hasil Penilaian & Summary Temuan")
+        
         skor_akhir = max(0, 1000 - (counts["Minor"]*10 + counts["Major"]*20 + counts["Kritis"]*30))
         
         if skor_akhir >= 860: grade, color = "A (Sangat Baik)", "green"
@@ -81,21 +83,35 @@ if menu == "📝 Audit Baru":
         col_b.metric("Major", counts["Major"])
         col_c.metric("Kritis", counts["Kritis"])
         col_d.metric("SKOR AKHIR", skor_akhir, grade)
+        
+        st.markdown(f"**Grade Final: :{color}[{grade}]**")
 
+        # Tabel Summary Temuan Non-OK
+        df_summary = pd.DataFrame([i for i in temp_audit_entries if i["Status"] != "OK"])
+        if not df_summary.empty:
+            st.warning("⚠️ Daftar Temuan yang Harus Diperbaiki:")
+            st.table(df_summary[["Kategori", "No", "Kriteria", "Status", "Catatan"]])
+        else:
+            st.success("✅ Sempurna! Tidak ada temuan ketidaksesuaian.")
+
+        # Tombol Simpan
         if st.button("💾 SIMPAN DATA HASIL AUDIT", use_container_width=True):
             master_record = {
                 "Audit_ID": f"AUD-{datetime.now().strftime('%Y%m%d%H%M')}",
                 "Lokasi": lokasi, "Tanggal": str(tanggal), "Auditor": auditor,
-                "Skor_Akhir": skor_akhir, "Grade": grade, "Detail_Penilaian": temp_audit_entries
+                "Skor_Akhir": skor_akhir, "Grade": grade, 
+                "Detail_Penilaian": temp_audit_entries,
+                "Summary_Temuan": df_summary.to_dict('records') if not df_summary.empty else []
             }
             st.session_state.master_audit_data.append(master_record)
-            st.success("Audit Berhasil Disimpan!")
+            st.balloons()
+            st.success("Audit Berhasil Disimpan ke Data Master!")
     else:
-        st.info("Silakan unggah file template CSV.")
+        st.info("Silakan unggah file template CSV di sidebar.")
 
 # --- 5. MODULE: MONITORING PERBAIKAN (CAPA) ---
 elif menu == "🛠️ Monitoring Perbaikan (CAPA)":
-    st.title("🛠️ Monitoring CAPA")
+    st.title("🛠️ Monitoring CAPA (Before vs After)")
     if st.session_state.master_audit_data:
         df_m = pd.DataFrame(st.session_state.master_audit_data)
         sel_id = st.selectbox("Pilih ID Audit", df_m['Audit_ID'])
@@ -114,40 +130,38 @@ elif menu == "🛠️ Monitoring Perbaikan (CAPA)":
                         if item['Foto_Temuan']: st.image(item['Foto_Temuan'], width=200)
                     with cr:
                         item['Tindakan_Perbaikan'] = st.text_area("Perbaikan", value=item['Tindakan_Perbaikan'], key=f"t_{sel_id}_{i}")
-                        f_p = st.file_uploader("Foto Bukti", type=['jpg','png','jpeg'], key=f"f_{sel_id}_{i}")
+                        f_p = st.file_uploader("Foto Bukti Perbaikan", type=['jpg','png','jpeg'], key=f"f_{sel_id}_{i}")
                         if f_p: item['Foto_Perbaikan'] = f_p
                         item['Status_Perbaikan'] = st.selectbox("Status", ["Open", "Closed"], index=0 if item['Status_Perbaikan']=="Open" else 1, key=f"s_{sel_id}_{i}")
             
             if st.button("Update CAPA"):
-                st.success("Progress diperbarui!")
+                st.success("Progress perbaikan berhasil diperbarui!")
     else:
-        st.info("Belum ada data.")
+        st.info("Belum ada data audit.")
 
-# --- 6. MODULE: DATA MASTER & REPORT (FITUR KEMBALI) ---
+# --- 6. MODULE: DATA MASTER & REPORT ---
 elif menu == "📁 Data Master & Report":
-    st.title("📁 Database Master & Laporan Audit")
+    st.title("📁 Database & Report Master")
     if st.session_state.master_audit_data:
         df_master = pd.DataFrame(st.session_state.master_audit_data)
-        
-        st.subheader("History Audit Terdaftar")
-        st.dataframe(df_master.drop(columns=['Detail_Penilaian']), use_container_width=True)
+        st.subheader("History Seluruh Audit")
+        st.dataframe(df_master.drop(columns=['Detail_Penilaian', 'Summary_Temuan']), use_container_width=True)
         
         st.divider()
-        sel_rep = st.selectbox("Pilih Audit ID untuk Report Lengkap", df_master['Audit_ID'])
-        
-        # Ambil detail
+        sel_rep = st.selectbox("Pilih Audit ID untuk Summary Temuan", df_master['Audit_ID'])
         rep_data = next(item for item in st.session_state.master_audit_data if item["Audit_ID"] == sel_rep)
-        df_rep = pd.DataFrame(rep_data["Detail_Penilaian"])
         
-        # Filter Tampilan (Kategori, No, Kriteria, Status, Catatan, Status Perbaikan)
-        cols_to_show = ["Kategori", "No", "Kriteria", "Status", "Catatan", "Status_Perbaikan"]
-        st.subheader(f"Detail Laporan: {rep_data['Lokasi']}")
-        st.write(f"Auditor: {rep_data['Auditor']} | Skor: {rep_data['Skor_Akhir']} ({rep_data['Grade']})")
-        st.table(df_rep[cols_to_show])
-        
-        # Download
-        csv = df_rep.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Report (CSV)", csv, f"Report_{sel_rep}.csv")
+        # Tampilkan Summary Temuan Khusus (Yang Tidak OK)
+        if rep_data["Summary_Temuan"]:
+            st.warning(f"Summary Temuan Non-OK untuk {rep_data['Lokasi']}:")
+            st.table(pd.DataFrame(rep_data["Summary_Temuan"])[["Kategori", "No", "Kriteria", "Status", "Catatan"]])
+        else:
+            st.success("Audit ini tidak memiliki temuan ketidaksesuaian.")
+            
+        # Download Detail Lengkap
+        df_full = pd.DataFrame(rep_data["Detail_Penilaian"])
+        csv = df_full.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download Report Lengkap (CSV)", csv, f"Full_Report_{sel_rep}.csv")
     else:
         st.info("Database kosong.")
 
