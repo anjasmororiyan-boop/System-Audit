@@ -169,8 +169,8 @@ elif menu == "📁 Data Master & Report":
             
         # Tombol Download Data Lengkap
         full_df = pd.DataFrame(record["Detail_Penilaian"])
-        xls_file = full_df.to_excel(index=False).encode('utf-8')
-        st.download_button("📥 Download Detail Audit (excel)", excel_file, f"Detail_{sel_id}.xls")
+        xlsx_file = full_df.to_excel(index=False).encode('utf-8')
+        st.download_button("📥 Download Detail Audit (excel)", excel_file, f"Detail_{sel_id}.xlsx")
     else:
         st.info("Belum ada data yang disimpan. Silakan lakukan audit di module 'Audit Baru'.")
 # --- 7. MODULE: DASHBOARD ANALISIS ---
