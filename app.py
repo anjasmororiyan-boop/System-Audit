@@ -142,58 +142,59 @@ elif menu == "🛠️ Monitoring Perbaikan (CAPA)":
 # --- 6. MODULE: DATA MASTER & REPORT ---
 elif menu == "📁 Data Master & Report":
     st.title("📁 Database & Report Master")
+    
     if st.session_state.master_audit_data:
         df_master = pd.DataFrame(st.session_state.master_audit_data)
         
-        # Saring kolom untuk tampilan tabel utama
-        display_cols = ["Audit_ID", "Lokasi", "Tanggal", "Auditor", "Skor_Akhir", "Grade"]
-        st.subheader("History Seluruh Audit")
-        st.dataframe(df_master[display_cols], use_container_width=True)
+        # Saring kolom untuk tampilan tabel utama agar tidak error
+        cols_display = ["Audit_ID", "Lokasi", "Tanggal", "Auditor", "Skor_Akhir", "Grade"]
+        st.subheader("History Audit")
+        st.dataframe(df_master[cols_display], use_container_width=True)
         
         st.divider()
-        sel_rep = st.selectbox("Pilih Audit ID untuk Detail Laporan", df_master['Audit_ID'])
+        sel_id = st.selectbox("Pilih Audit ID untuk Detail Temuan", df_master['Audit_ID'])
         
-        # Ambil data record yang dipilih
-        record = next(item for item in st.session_state.master_audit_data if item["Audit_ID"] == sel_rep)
+        # Ambil record data yang dipilih
+        record = next(item for item in st.session_state.master_audit_data if item["Audit_ID"] == sel_id)
         
-        # Menyiapkan data untuk ditampilkan dan didownload
-        df_full = pd.DataFrame(record["Detail_Penilaian"])
-        summary_data = record.get("Summary_Temuan", [])
-
+        # Tampilkan Summary Temuan (Non-OK) di layar
         st.subheader(f"Summary Temuan: {record['Lokasi']}")
+        summary_data = record.get("Summary_Temuan", [])
+        
         if summary_data:
-            df_sum_view = pd.DataFrame(summary_data)
-            st.warning("Daftar Ketidaksesuaian (Non-OK):")
-            st.table(df_sum_view[["Kategori", "No", "Kriteria", "Status", "Catatan"]])
+            st.table(pd.DataFrame(summary_data)[["Kategori", "No", "Kriteria", "Status", "Catatan"]])
         else:
-            st.success("✅ Tidak ada temuan ketidaksesuaian.")
-
-        # --- PROSES DOWNLOAD EXCEL (FIXED) ---
+            st.success("Tidak ada temuan (Semua OK) untuk audit ini.")
+            
+        # --- PROSES DOWNLOAD EXCEL (PERBAIKAN) ---
         import io
+        
+        # 1. Buat buffer memori
         buffer = io.BytesIO()
         
-        # Menggunakan ExcelWriter agar file Excel terformat dengan benar
+        # 2. Gunakan ExcelWriter untuk menulis ke buffer
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            # Sheet 1: Detail Lengkap
-            df_full.to_excel(writer, sheet_name='Detail_Penilaian', index=False)
+            full_df = pd.DataFrame(record["Detail_Penilaian"])
+            full_df.to_excel(writer, sheet_name='Detail_Audit', index=False)
             
-            # Sheet 2: Ringkasan Temuan (Jika ada)
+            # Tambahkan sheet ringkasan temuan jika ada
             if summary_data:
-                pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary_Temuan', index=False)
+                pd.DataFrame(summary_data).to_excel(writer, sheet_name='Ringkasan_Temuan', index=False)
             
-            # Mengatur lebar kolom agar rapi di Excel
+            # Atur lebar kolom agar rapi
             workbook = writer.book
             for sheet in writer.sheets.values():
-                sheet.set_column('A:Z', 25) 
+                sheet.set_column('A:Z', 25)
 
+        # 3. Tombol Download menggunakan data dari buffer
         st.download_button(
-            label="📥 Download Laporan Audit (Excel)",
+            label="📥 Download Detail Audit (Excel)",
             data=buffer.getvalue(),
-            file_name=f"GMP_Report_{sel_rep}.xlsx",
+            file_name=f"Detail_Audit_{sel_id}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
-        st.info("Database kosong. Silakan lakukan audit terlebih dahulu.")
+        st.info("Belum ada data yang disimpan.")
 # --- 7. MODULE: DASHBOARD ANALISIS ---
 else:
     st.title("📊 Dashboard Analisis")
