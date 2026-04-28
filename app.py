@@ -139,32 +139,36 @@ elif menu == "🛠️ Monitoring Perbaikan (CAPA)":
     else:
         st.info("Belum ada data audit.")
 
-# --- 6. MODULE: DATA MASTER & REPORT ---
+# --- 6. MODULE: DATA MASTER & REPORT (DENGAN FIX ERROR) ---
 elif menu == "📁 Data Master & Report":
     st.title("📁 Database & Report Master")
     if st.session_state.master_audit_data:
         df_master = pd.DataFrame(st.session_state.master_audit_data)
-        st.subheader("History Seluruh Audit")
-        st.dataframe(df_master.drop(columns=['Detail_Penilaian', 'Summary_Temuan']), use_container_width=True)
+        
+        # Filter kolom yang ditampilkan agar tidak error saat ada data kompleks
+        display_cols = [c for c in df_master.columns if c not in ['Detail_Penilaian', 'Summary_Temuan']]
+        st.dataframe(df_master[display_cols], use_container_width=True)
         
         st.divider()
-        sel_rep = st.selectbox("Pilih Audit ID untuk Summary Temuan", df_master['Audit_ID'])
+        sel_rep = st.selectbox("Pilih Audit ID untuk Report", df_master['Audit_ID'])
         rep_data = next(item for item in st.session_state.master_audit_data if item["Audit_ID"] == sel_rep)
         
-        # Tampilkan Summary Temuan Khusus (Yang Tidak OK)
-        if rep_data["Summary_Temuan"]:
-            st.warning(f"Summary Temuan Non-OK untuk {rep_data['Lokasi']}:")
-            st.table(pd.DataFrame(rep_data["Summary_Temuan"])[["Kategori", "No", "Kriteria", "Status", "Catatan"]])
+        # FIX ERROR: Gunakan .get() agar jika key tidak ada, aplikasi tidak crash
+        summary_temuan = rep_data.get("Summary_Temuan", [])
+        
+        st.subheader(f"Summary Temuan: {rep_data['Lokasi']}")
+        if summary_temuan:
+            st.warning("Daftar Ketidaksesuaian:")
+            st.table(pd.DataFrame(summary_temuan)[["Kategori", "No", "Kriteria", "Status", "Catatan"]])
         else:
-            st.success("Audit ini tidak memiliki temuan ketidaksesuaian.")
+            st.success("Tidak ada temuan ketidaksesuaian pada audit ini.")
             
-        # Download Detail Lengkap
+        # Download Detail
         df_full = pd.DataFrame(rep_data["Detail_Penilaian"])
         csv = df_full.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Report Lengkap (CSV)", csv, f"Full_Report_{sel_rep}.csv")
+        st.download_button("📥 Download Full Report (CSV)", csv, f"Full_Report_{sel_rep}.csv")
     else:
         st.info("Database kosong.")
-
 # --- 7. MODULE: DASHBOARD ANALISIS ---
 else:
     st.title("📊 Dashboard Analisis")
