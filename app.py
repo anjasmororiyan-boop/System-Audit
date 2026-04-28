@@ -139,36 +139,40 @@ elif menu == "🛠️ Monitoring Perbaikan (CAPA)":
     else:
         st.info("Belum ada data audit.")
 
-# --- 6. MODULE: DATA MASTER & REPORT (DENGAN FIX ERROR) ---
+# --- 5. MODULE: DATA MASTER & REPORT (PERBAIKAN TAMPILAN) ---
 elif menu == "📁 Data Master & Report":
     st.title("📁 Database & Report Master")
+    
     if st.session_state.master_audit_data:
+        # Konversi ke DataFrame untuk tabel utama
         df_master = pd.DataFrame(st.session_state.master_audit_data)
         
-        # Filter kolom yang ditampilkan agar tidak error saat ada data kompleks
-        display_cols = [c for c in df_master.columns if c not in ['Detail_Penilaian', 'Summary_Temuan']]
-        st.dataframe(df_master[display_cols], use_container_width=True)
+        # Saring kolom agar tidak menampilkan list/dict di tabel utama
+        cols_display = ["Audit_ID", "Lokasi", "Tanggal", "Auditor", "Skor_Akhir", "Grade"]
+        st.subheader("History Audit")
+        st.dataframe(df_master[cols_display], use_container_width=True)
         
         st.divider()
-        sel_rep = st.selectbox("Pilih Audit ID untuk Report", df_master['Audit_ID'])
-        rep_data = next(item for item in st.session_state.master_audit_data if item["Audit_ID"] == sel_rep)
+        sel_id = st.selectbox("Pilih ID Audit untuk Detail Temuan", df_master['Audit_ID'])
         
-        # FIX ERROR: Gunakan .get() agar jika key tidak ada, aplikasi tidak crash
-        summary_temuan = rep_data.get("Summary_Temuan", [])
+        # Ambil record data yang dipilih
+        record = next(item for item in st.session_state.master_audit_data if item["Audit_ID"] == sel_id)
         
-        st.subheader(f"Summary Temuan: {rep_data['Lokasi']}")
-        if summary_temuan:
-            st.warning("Daftar Ketidaksesuaian:")
-            st.table(pd.DataFrame(summary_temuan)[["Kategori", "No", "Kriteria", "Status", "Catatan"]])
+        # Tampilkan Summary Temuan (Non-OK) yang sudah disimpan
+        st.subheader(f"Summary Temuan: {record['Lokasi']}")
+        summary_data = record.get("Summary_Temuan", [])
+        
+        if summary_data:
+            st.table(pd.DataFrame(summary_data)[["Kategori", "No", "Kriteria", "Status", "Catatan"]])
         else:
-            st.success("Tidak ada temuan ketidaksesuaian pada audit ini.")
+            st.success("Tidak ada temuan (Semua OK) untuk audit ini.")
             
-        # Download Detail
-        df_full = pd.DataFrame(rep_data["Detail_Penilaian"])
-        csv = df_full.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Full Report (CSV)", csv, f"Full_Report_{sel_rep}.csv")
+        # Tombol Download Data Lengkap
+        full_df = pd.DataFrame(record["Detail_Penilaian"])
+        csv_file = full_df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download Detail Audit (CSV)", csv_file, f"Detail_{sel_id}.csv")
     else:
-        st.info("Database kosong.")
+        st.info("Belum ada data yang disimpan. Silakan lakukan audit di module 'Audit Baru'.")
 # --- 7. MODULE: DASHBOARD ANALISIS ---
 else:
     st.title("📊 Dashboard Analisis")
