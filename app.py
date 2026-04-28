@@ -143,9 +143,7 @@ elif menu == "🛠️ Monitoring Perbaikan (CAPA)":
             st.success("✅ Semua kriteria OK.")
     else:
         st.info("Belum ada data audit.")
-    else:
-        st.info("Belum ada data audit.")
-
+   
 # --- 6. MODULE: DATA MASTER & REPORT ---
 elif menu == "📁 Data Master & Report":
     st.title("Data Master Audit")
