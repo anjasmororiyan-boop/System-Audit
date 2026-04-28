@@ -1,3 +1,31 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from datetime import datetime
+import hashlib
+
+# --- KONFIGURASI ---
+st.set_page_config(page_title="GMP Audit & CAPA System", layout="wide")
+
+# --- 1. DATABASE LENGKAP (Session State) ---
+if 'master_audit_data' not in st.session_state:
+    st.session_state.master_audit_data = []
+
+# --- 2. FUNGSI UNIK ID ---
+def generate_id(cat, area, no, crit):
+    raw_str = f"{cat}{area}{no}{crit}"
+    return hashlib.md5(raw_str.encode()).hexdigest()
+
+# --- 3. NAVIGATION ---
+st.sidebar.title("🛡️ GMP Digital Hub")
+menu = st.sidebar.radio("Pilih Module", [
+    "📝 Audit Baru", 
+    "🛠️ Monitoring Perbaikan (CAPA)", 
+    "📁 Data Master & Report", 
+    "📊 Dashboard Analisis"
+])
+
+# --- 4. MODULE: AUDIT BARU ---
 if menu == "📝 Audit Baru":
     st.title("Input Audit GMP & Penilaian")
     
