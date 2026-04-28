@@ -51,34 +51,47 @@ if menu == "📝 Audit Baru":
                     with c1:
                         res = st.radio("Status", ["OK", "Minor", "Major", "Kritis"], key=f"s_{u_id}", horizontal=True)
                     with c2:
-                        note = st.text_area("Catatan Temuan", key=f"n_{u_id}", height=70)
+                        note = st.text_area("Catatan Temuan", key=f"n_{u_id}", height=70, placeholder="Wajib isi jika temuan...")
                     with c3:
-                        img = st.file_uploader("Foto Temuan", type=['jpg','png','jpeg'], key=f"img_t_{u_id}")
-                        if img: st.image(img, width=100, caption="Preview Temuan")
+                        img = st.file_uploader("Foto Bukti", type=['jpg','png','jpeg'], key=f"i_{u_id}")
 
                     points = {"OK": 0, "Minor": -10, "Major": -20, "Kritis": -30}
                     total_deduction += points[res]
 
                     temp_audit_entries.append({
                         "ID_Item": u_id,
-                        "Kategori": kategori, "No": row['No'], "Area": row['Area'],
-                        "Kriteria": row['Kriteria Penilaian'], "Status": res, "Catatan": note,
-                        "Foto_Temuan": img, # Simpan objek foto temuan
-                        "Tindakan_Perbaikan": "",
-                        "Foto_Perbaikan": None, # Tempat simpan foto perbaikan nanti
+                        "Kategori": kategori,
+                        "No": row['No'],
+                        "Area": row['Area'],
+                        "Kriteria": row['Kriteria Penilaian'],
+                        "Status": res,
+                        "Catatan": note,
+                        "Foto_Ada": "Ya" if img else "Tidak",
+                        "Tindakan_Perbaikan": "", # Akan diisi di module CAPA
                         "Status_Perbaikan": "Open" if res != "OK" else "N/A"
                     })
 
         if st.button("💾 SIMPAN KE DATA MASTER", use_container_width=True):
             skor_akhir = max(0, 1000 + total_deduction)
+            grade = "A" if skor_akhir >= 860 else "B" if skor_akhir >= 710 else "C" if skor_akhir >= 610 else "D"
+            
             master_record = {
                 "Audit_ID": f"AUD-{datetime.now().strftime('%Y%m%d%H%M')}",
-                "Lokasi": lokasi, "Tanggal": str(tanggal), "Auditor": auditor,
-                "Skor_Akhir": skor_akhir, "Grade": "A" if skor_akhir >= 860 else "B",
+                "Lokasi": lokasi,
+                "Tanggal": str(tanggal),
+                "Auditor": auditor,
+                "Skor_Akhir": skor_akhir,
+                "Grade": grade,
                 "Detail_Penilaian": temp_audit_entries
             }
             st.session_state.master_audit_data.append(master_record)
             st.success("Data Berhasil Disimpan!")
+            
+            # Summary Temuan Non-OK
+            temuan_list = [item for item in temp_audit_entries if item["Status"] != "OK"]
+            if temuan_list:
+                st.warning(f"⚠️ Terdeteksi {len(temuan_list)} temuan yang memerlukan perbaikan.")
+                st.table(pd.DataFrame(temuan_list)[["No", "Kriteria", "Status", "Catatan"]])
 
 # --- 5. MODULE: MONITORING PERBAIKAN (CAPA) ---
 elif menu == "🛠️ Monitoring Perbaikan (CAPA)":
@@ -130,6 +143,21 @@ elif menu == "🛠️ Monitoring Perbaikan (CAPA)":
             st.success("✅ Semua kriteria OK.")
     else:
         st.info("Belum ada data audit.")
+    else:
+        st.info("Belum ada data audit.")
+
+# --- 6. MODULE: DATA MASTER & REPORT ---
+elif menu == "📁 Data Master & Report":
+    st.title("Data Master Audit")
+    if st.session_state.master_audit_data:
+        df_master = pd.DataFrame(st.session_state.master_audit_data)
+        st.dataframe(df_master.drop(columns=['Detail_Penilaian']), use_container_width=True)
+        
+        selected_audit = st.selectbox("Lihat Detail & Progress Perbaikan", df_master['Audit_ID'])
+        detail_data = next(item for item in st.session_state.master_audit_data if item["Audit_ID"] == selected_audit)
+        st.table(pd.DataFrame(detail_data["Detail_Penilaian"]))
+    else:
+        st.info("Database kosong.")
 
 # --- 7. MODULE: DASHBOARD ANALISIS ---
 else:
