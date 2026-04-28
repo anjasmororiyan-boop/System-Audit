@@ -139,25 +139,26 @@ elif menu == "🛠️ Monitoring Perbaikan (CAPA)":
     else:
         st.info("Belum ada data audit.")
 
-# --- 6. MODULE: DATA MASTER & REPORT ---
+# --- 5. MODULE: DATA MASTER & REPORT (PERBAIKAN TAMPILAN) ---
 elif menu == "📁 Data Master & Report":
     st.title("📁 Database & Report Master")
     
     if st.session_state.master_audit_data:
+        # Konversi ke DataFrame untuk tabel utama
         df_master = pd.DataFrame(st.session_state.master_audit_data)
         
-        # Saring kolom untuk tampilan tabel utama agar tidak error
+        # Saring kolom agar tidak menampilkan list/dict di tabel utama
         cols_display = ["Audit_ID", "Lokasi", "Tanggal", "Auditor", "Skor_Akhir", "Grade"]
         st.subheader("History Audit")
         st.dataframe(df_master[cols_display], use_container_width=True)
         
         st.divider()
-        sel_id = st.selectbox("Pilih Audit ID untuk Detail Temuan", df_master['Audit_ID'])
+        sel_id = st.selectbox("Pilih ID Audit untuk Detail Temuan", df_master['Audit_ID'])
         
         # Ambil record data yang dipilih
         record = next(item for item in st.session_state.master_audit_data if item["Audit_ID"] == sel_id)
         
-        # Tampilkan Summary Temuan (Non-OK) di layar
+        # Tampilkan Summary Temuan (Non-OK) yang sudah disimpan
         st.subheader(f"Summary Temuan: {record['Lokasi']}")
         summary_data = record.get("Summary_Temuan", [])
         
@@ -166,36 +167,12 @@ elif menu == "📁 Data Master & Report":
         else:
             st.success("Tidak ada temuan (Semua OK) untuk audit ini.")
             
-        # --- PROSES DOWNLOAD EXCEL (PERBAIKAN) ---
-        import io
-        
-        # 1. Buat buffer memori
-        buffer = io.BytesIO()
-        
-        # 2. Gunakan ExcelWriter untuk menulis ke buffer
+        # Tombol Download Data Lengkap
         full_df = pd.DataFrame(record["Detail_Penilaian"])
-        csv_buffer = io.StringIO()
-        full_df.to_csv(csv_buffer, index=False, sep=';', encoding='utf-8-sig')
-        csv_data = csv_buffer.getvalue()
-            
-            # Tambahkan sheet ringkasan temuan jika ada
-            if summary_data:
-                pd.DataFrame(summary_data).to_excel(writer, sheet_name='Ringkasan_Temuan', index=False)
-            
-            # Atur lebar kolom agar rapi
-            workbook = writer.book
-            for sheet in writer.sheets.values():
-                sheet.set_column('A:Z', 25)
-
-        # 3. Tombol Download menggunakan data dari buffer
-        st.download_button(
-        label="📥 Download Detail Audit (CSV)",
-        data=csv_data,
-        file_name=f"Detail_Audit_{sel_id}.csv",
-        mime="text/csv"
-        )
+        csv_file = full_df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download Detail Audit (CSV)", csv_file, f"Detail_{sel_id}.csv")
     else:
-        st.info("Belum ada data yang disimpan.")
+        st.info("Belum ada data yang disimpan. Silakan lakukan audit di module 'Audit Baru'.")
 # --- 7. MODULE: DASHBOARD ANALISIS ---
 else:
     st.title("📊 Dashboard Analisis")
