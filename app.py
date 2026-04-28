@@ -139,40 +139,56 @@ elif menu == "🛠️ Monitoring Perbaikan (CAPA)":
     else:
         st.info("Belum ada data audit.")
 
-# --- 5. MODULE: DATA MASTER & REPORT (PERBAIKAN TAMPILAN) ---
+# --- 6. MODULE: DATA MASTER & REPORT (DENGAN EXCEL DOWNLOAD) ---
 elif menu == "📁 Data Master & Report":
     st.title("📁 Database & Report Master")
-    
     if st.session_state.master_audit_data:
-        # Konversi ke DataFrame untuk tabel utama
         df_master = pd.DataFrame(st.session_state.master_audit_data)
         
-        # Saring kolom agar tidak menampilkan list/dict di tabel utama
-        cols_display = ["Audit_ID", "Lokasi", "Tanggal", "Auditor", "Skor_Akhir", "Grade"]
-        st.subheader("History Audit")
-        st.dataframe(df_master[cols_display], use_container_width=True)
+        # Tabel Ringkasan Utama
+        display_cols = ["Audit_ID", "Lokasi", "Tanggal", "Auditor", "Skor_Akhir", "Grade"]
+        st.dataframe(df_master[display_cols], use_container_width=True)
         
         st.divider()
-        sel_id = st.selectbox("Pilih ID Audit untuk Detail Temuan", df_master['Audit_ID'])
+        sel_rep = st.selectbox("Pilih Audit ID untuk Detail Laporan", df_master['Audit_ID'])
+        rep_data = next(item for item in st.session_state.master_audit_data if item["Audit_ID"] == sel_rep)
         
-        # Ambil record data yang dipilih
-        record = next(item for item in st.session_state.master_audit_data if item["Audit_ID"] == sel_id)
+        # Menyiapkan Data untuk Excel
+        df_full = pd.DataFrame(rep_data["Detail_Penilaian"])
+        df_summary = pd.DataFrame(rep_data.get("Summary_Temuan", []))
         
-        # Tampilkan Summary Temuan (Non-OK) yang sudah disimpan
-        st.subheader(f"Summary Temuan: {record['Lokasi']}")
-        summary_data = record.get("Summary_Temuan", [])
-        
-        if summary_data:
-            st.table(pd.DataFrame(summary_data)[["Kategori", "No", "Kriteria", "Status", "Catatan"]])
+        # Tampilan Preview di Streamlit
+        st.subheader(f"Summary Temuan: {rep_data['Lokasi']}")
+        if not df_summary.empty:
+            st.warning("Daftar Ketidaksesuaian:")
+            st.table(df_summary[["Kategori", "No", "Kriteria", "Status", "Catatan"]])
         else:
-            st.success("Tidak ada temuan (Semua OK) untuk audit ini.")
+            st.success("Tidak ada temuan ketidaksesuaian.")
+
+        # --- FUNGSI DOWNLOAD EXCEL ---
+        import io
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            # Sheet 1: Detail Penilaian Lengkap
+            df_full.to_excel(writer, sheet_name='Detail_Lengkap', index=False)
             
-        # Tombol Download Data Lengkap
-        full_df = pd.DataFrame(record["Detail_Penilaian"])
-        csv_file = full_df.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Detail Audit (CSV)", csv_file, f"Detail_{sel_id}.csv")
+            # Sheet 2: Khusus Temuan (Non-OK)
+            if not df_summary.empty:
+                df_summary.to_excel(writer, sheet_name='Ringkasan_Temuan', index=False)
+            
+            # Formatting (Otomatis menyesuaikan lebar kolom)
+            workbook = writer.book
+            for sheet in writer.sheets.values():
+                sheet.set_column('A:Z', 25)
+
+        st.download_button(
+            label="📥 Download Laporan Audit (Excel)",
+            data=buffer.getvalue(),
+            file_name=f"GMP_Report_{sel_rep}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
     else:
-        st.info("Belum ada data yang disimpan. Silakan lakukan audit di module 'Audit Baru'.")
+        st.info("Database kosong.")
 # --- 7. MODULE: DASHBOARD ANALISIS ---
 else:
     st.title("📊 Dashboard Analisis")
