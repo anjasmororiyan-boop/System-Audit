@@ -174,9 +174,9 @@ elif menu == "📁 Data Master & Report":
         
         # 2. Gunakan ExcelWriter untuk menulis ke buffer
         full_df = pd.DataFrame(record["Detail_Penilaian"])
-csv_buffer = io.StringIO()
-full_df.to_csv(csv_buffer, index=False, sep=';', encoding='utf-8-sig')
-csv_data = csv_buffer.getvalue()
+        csv_buffer = io.StringIO()
+        full_df.to_csv(csv_buffer, index=False, sep=';', encoding='utf-8-sig')
+        csv_data = csv_buffer.getvalue()
             
             # Tambahkan sheet ringkasan temuan jika ada
             if summary_data:
@@ -189,11 +189,11 @@ csv_data = csv_buffer.getvalue()
 
         # 3. Tombol Download menggunakan data dari buffer
         st.download_button(
-    label="📥 Download Detail Audit (CSV)",
-    data=csv_data,
-    file_name=f"Detail_Audit_{sel_id}.csv",
-    mime="text/csv"
-)
+        label="📥 Download Detail Audit (CSV)",
+        data=csv_data,
+        file_name=f"Detail_Audit_{sel_id}.csv",
+        mime="text/csv"
+        )
     else:
         st.info("Belum ada data yang disimpan.")
 # --- 7. MODULE: DASHBOARD ANALISIS ---
