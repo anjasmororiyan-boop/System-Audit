@@ -93,28 +93,32 @@ elif menu == "📅 Initiation & Scheduling":
 elif menu == "📊 Dashboard & Outstanding":
     st.title("📊 Dashboard Utama & Monitoring")
 
-    # --- BAGIAN 1: KPI METRICS ---
-    st.subheader("📋 Ringkasan Status Audit")
+    # --- BAGIAN 1: KPI METRICS (DIPISAHKAN) ---
+    st.subheader("📋 Ringkasan Status Audit & CAPA")
     
     total_jadwal = len(st.session_state.audit_schedules)
     total_selesai = len([s for s in st.session_state.audit_schedules if s['Status'] == "Completed"])
-    total_outstanding = len([s for s in st.session_state.audit_schedules if s['Status'] == "Outstanding"])
     
-    # Menghitung temuan yang belum diperbaiki di Phase 6
-    temuan_pending = 0
+    # Inisialisasi hitungan
+    belum_perbaikan = 0  # Tanggung jawab Auditee (Status: Open/Rejected)
+    menunggu_approval = 0 # Tanggung jawab Auditor (Status: Pending Approval)
+    
     if st.session_state.audit_history:
         for audit in st.session_state.audit_history:
             for item in audit['Detail']:
                 if item['status'] != 'OK':
-                    # Hitung jika belum disetujui auditor
-                    if item.get('capa_status') != 'Closed':
-                        temuan_pending += 1
-
+                    status_capa = item.get('capa_status', 'Open')
+                    
+                    if status_capa in ['Open', 'Rejected']:
+                        belum_perbaikan += 1
+                    elif status_capa == 'Pending Approval':
+                        menunggu_approval += 1
+    # Tampilan 4 Kolom Metric
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Total Jadwal", total_jadwal)
     m2.metric("Selesai (Completed)", total_selesai)
-    m3.metric("Outstanding", total_outstanding, delta_color="inverse")
-    m4.metric("Pending Approval/CAPA", temuan_pending, delta_color="inverse")
+    m3.metric("Belum Diperbaiki", belum_perbaikan, delta="Auditee", delta_color="inverse")
+    m4.metric("Menunggu Approval", menunggu_approval, delta="Auditor", delta_color="normal")
 
     st.divider()
 
