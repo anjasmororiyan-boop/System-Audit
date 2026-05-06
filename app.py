@@ -6,7 +6,17 @@ import io
 
 # --- 1. KONFIGURASI SISTEM ---
 st.set_page_config(page_title="Smart Audit Hub v5", layout="wide")
+# --- 1. INISIALISASI DATABASE USER & ROLE ---
+if 'users_db' not in st.session_state:
+    # Database user sederhana (Username: Password)
+    st.session_state.users_db = {
+        "riyan": {"password": "123", "role": "Auditor", "nama": "Riyan Anjasmoro"},
+        "yuka": {"password": "123", "role": "Auditee", "nama": "Yuka"},
+        "erland": {"password": "123", "role": "Auditee", "nama": "Erland"}
+    }
 
+if 'current_user' not in st.session_state:
+    st.session_state.current_user = None
 # Persistent Storage
 if 'master_templates' not in st.session_state:
     st.session_state.master_templates = {} 
@@ -34,17 +44,43 @@ def calculate_score(results):
     else: grade = "D (Kurang)"
     return final_score, grade, (minor, major, kritis)
 
-# --- 3. SIDEBAR NAVIGATION ---
-st.sidebar.title("🛡️ Smart Audit System")
-menu = st.sidebar.radio("Navigasi Module", [
-    "📊 Dashboard & Outstanding",
-    "⚙️ Module Master",
-    "📅 Initiation & Scheduling",
-    "📝 Execution (Phase 3)",
-    "🛠️ Remediation (Phase 6)",
-    "📄 Audit Report (Detail)"
-])
+# --- 2. MODUL LOGIN ---
+def login_page():
+    st.title("🔐 Login Smart Audit System")
+    with st.form("login_form"):
+        username = st.text_input("Username").lower()
+        password = st.text_input("Password", type="password")
+        if st.form_submit_button("Login"):
+            if username in st.session_state.users_db and st.session_state.users_db[username]["password"] == password:
+                st.session_state.current_user = st.session_state.users_db[username]
+                st.session_state.current_user['username'] = username
+                st.success(f"Selamat Datang, {st.session_state.current_user['nama']}!")
+                st.rerun()
+            else:
+                st.error("Username atau Password salah")
 
+if st.session_state.current_user is None:
+    login_page()
+    st.stop() # Berhenti di sini jika belum login
+
+# --- 3. SIDEBAR & ROLE ACCESS CONTROL ---
+user = st.session_state.current_user
+st.sidebar.title(f"👤 {user['nama']}")
+st.sidebar.write(f"Role: **{user['role']}**")
+
+# Filter menu berdasarkan Role
+menu_options = ["📊 Dashboard & Outstanding"]
+
+if user['role'] == "Auditor":
+    menu_options += ["⚙️ Module Master", "📅 Initiation & Scheduling", "📝 Execution (Phase 3)"]
+
+menu_options += ["🛠️ Remediation (Phase 6)", "📄 Audit Report (Detail)"]
+
+menu = st.sidebar.radio("Navigasi Module", menu_options)
+
+if st.sidebar.button("🚪 Logout"):
+    st.session_state.current_user = None
+    st.rerun()
 # --- 4. MODULE: MASTER DATA ---
 if menu == "⚙️ Module Master":
     st.title("⚙️ Module Master: Pusat Database")
@@ -290,83 +326,56 @@ elif menu == "📝 Execution (Phase 3)":
 elif menu == "🛠️ Remediation (Phase 6)":
     st.title("🛠️ Perbaikan & Verifikasi (CAPA)")
     
-    if st.session_state.audit_history:
-        # Hanya tampilkan laporan yang memiliki temuan Non-OK
-        audit_with_findings = [a['Audit_Title'] for a in st.session_state.audit_history if any(d['status'] != 'OK' for d in a['Detail'])]
+    # Filter laporan
+    audit_with_findings = [a['Audit_Title'] for a in st.session_state.audit_history if any(d['status'] != 'OK' for d in a['Detail'])]
+    
+    if audit_with_findings:
+        sel_rep = st.selectbox("Pilih Laporan Audit", audit_with_findings)
+        idx_hist = next(i for i, a in enumerate(st.session_state.audit_history) if a['Audit_Title'] == sel_rep)
+        audit_data = st.session_state.audit_history[idx_hist]
         
-        if audit_with_findings:
-            sel_rep = st.selectbox("Pilih Laporan Audit", audit_with_findings)
-            idx_hist = next(i for i, a in enumerate(st.session_state.audit_history) if a['Audit_Title'] == sel_rep)
-            audit_data = st.session_state.audit_history[idx_hist]
-            
-            st.info(f"Auditor: {audit_data['Auditor']} | Auditee: {audit_data['Auditee']}")
-            
-            for i, item in enumerate(audit_data['Detail']):
-                if item['status'] != 'OK':
-                    if 'capa_status' not in item:
-                        item['capa_status'] = 'Open'
+        for i, item in enumerate(audit_data['Detail']):
+            if item['status'] != 'OK':
+                if 'capa_status' not in item: item['capa_status'] = 'Open'
+                
+                with st.container(border=True):
+                    st.subheader(f"Item: {item['kriteria']}")
+                    col_before, col_after, col_status = st.columns([2, 2, 1.5])
                     
-                    with st.container(border=True):
-                        # Judul Kriteria dan Status
-                        st.subheader(f"Item #{item.get('no', i+1)}: {item['kriteria']}")
+                    with col_before:
+                        st.markdown("📷 **Foto Temuan (Before)**")
+                        if item.get('photo'): st.image(item['photo'], use_container_width=True)
+                        st.warning(f"Catatan: {item['note']}")
+
+                    with col_after:
+                        st.markdown("📷 **Foto Perbaikan (After)**")
+                        if item.get('capa_photo_after'): st.image(item['capa_photo_after'], use_container_width=True)
+                        if item.get('capa_action'): st.success(f"Tindakan: {item['capa_action']}")
+
+                    with col_status:
+                        st.write(f"Status: `{item['capa_status']}`")
                         
-                        # --- SPACE UNTUK KOMPARASI FOTO ---
-                        col_before, col_after, col_status = st.columns([2, 2, 1.5])
+                        # LOGIKA ROLE AUDITEE (Kirim Perbaikan)
+                        if user['role'] == "Auditee" and item['capa_status'] in ['Open', 'Rejected']:
+                            capa_txt = st.text_area("Deskripsi Perbaikan", key=f"t_{idx_hist}_{i}")
+                            capa_img = st.file_uploader("Upload Bukti After", key=f"f_{idx_hist}_{i}")
+                            if st.button("Kirim Approval", key=f"s_{idx_hist}_{i}"):
+                                item['capa_action'] = capa_txt
+                                item['capa_photo_after'] = capa_img
+                                item['capa_status'] = 'Pending Approval'
+                                st.rerun()
+
+                        # LOGIKA ROLE AUDITOR (Approve/Reject)
+                        elif user['role'] == "Auditor" and item['capa_status'] == 'Pending Approval':
+                            if st.button("✔️ Approve", key=f"app_{idx_hist}_{i}", type="primary"):
+                                item['capa_status'] = 'Closed'
+                                st.rerun()
+                            if st.button("❌ Reject", key=f"rej_{idx_hist}_{i}"):
+                                item['capa_status'] = 'Rejected'
+                                st.rerun()
                         
-                        with col_before:
-                            st.markdown("📷 **Foto Temuan (Before)**")
-                            if item.get('photo'):
-                                st.image(item['photo'], use_container_width=True)
-                            else:
-                                st.caption("Tidak ada foto saat audit")
-                            st.warning(f"Temuan: {item['note']}")
-
-                        with col_after:
-                            st.markdown("📷 **Foto Perbaikan (After)**")
-                            # Cek apakah auditee sudah upload foto perbaikan
-                            if item.get('capa_photo_after'):
-                                st.image(item['capa_photo_after'], use_container_width=True)
-                            else:
-                                st.info("Menunggu foto perbaikan dari auditee...")
-                            
-                            if item.get('capa_action'):
-                                st.success(f"Tindakan: {item['capa_action']}")
-
-                        with col_status:
-                            st.markdown("⚖️ **Status & Verifikasi**")
-                            st.write(f"Status saat ini: `{item['capa_status']}`")
-                            
-                            # LOGIKA INPUT AUDITEE
-                            if item['capa_status'] in ['Open', 'Rejected']:
-                                with st.expander("Isi Perbaikan", expanded=True):
-                                    capa_txt = st.text_area("Deskripsi Tindakan", key=f"t_{idx_hist}_{i}")
-                                    capa_img = st.file_uploader("Upload Bukti After", key=f"f_{idx_hist}_{i}")
-                                    if st.button("Kirim Approval", key=f"s_{idx_hist}_{i}"):
-                                        if capa_txt and capa_img:
-                                            item['capa_action'] = capa_txt
-                                            item['capa_photo_after'] = capa_img
-                                            item['capa_status'] = 'Pending Approval'
-                                            st.rerun()
-                                        else:
-                                            st.error("Teks & Foto wajib diisi!")
-
-                            # LOGIKA APPROVAL AUDITOR (Data TIDAK ditutup agar bisa dicek)
-                            elif item['capa_status'] == 'Pending Approval':
-                                st.write("---")
-                                if st.button("✔️ Approve", key=f"app_{idx_hist}_{i}", type="primary", use_container_width=True):
-                                    item['capa_status'] = 'Closed'
-                                    st.rerun()
-                                if st.button("❌ Reject", key=f"rej_{idx_hist}_{i}", use_container_width=True):
-                                    item['capa_status'] = 'Rejected'
-                                    st.rerun()
-                            
-                            elif item['capa_status'] == 'Closed':
-                                st.success("✅ Terverifikasi Selesai")
-        else:
-            st.success("Tidak ada temuan pada laporan ini.")
-    else:
-        st.info("Belum ada histori audit.")
-
+                        elif item['capa_status'] == 'Closed':
+                            st.success("✅ Selesai")
 # --- 9. MODULE: REPORT ---
 elif menu == "📄 Audit Report (Detail)":
     st.title("📄 Detail Laporan Audit")
