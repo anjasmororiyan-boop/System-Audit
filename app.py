@@ -291,65 +291,79 @@ elif menu == "🛠️ Remediation (Phase 6)":
     st.title("🛠️ Perbaikan & Verifikasi (CAPA)")
     
     if st.session_state.audit_history:
-        # Filter audit yang memiliki temuan Non-OK
+        # Filter laporan yang memiliki temuan Non-OK
         audit_with_findings = [a['Audit_Title'] for a in st.session_state.audit_history if any(d['status'] != 'OK' for d in a['Detail'])]
         
         if audit_with_findings:
             sel_rep = st.selectbox("Pilih Laporan Audit", audit_with_findings)
-            # Ambil index asli di session state agar perubahan tersimpan permanen
+            # Ambil indeks asli agar perubahan tersimpan permanen di database session
             idx_hist = next(i for i, a in enumerate(st.session_state.audit_history) if a['Audit_Title'] == sel_rep)
             audit_data = st.session_state.audit_history[idx_hist]
             
-            st.info(f"Auditee: {audit_data['Auditee']} | Auditor: {audit_data['Auditor']}")
+            st.info(f"Auditor: {audit_data['Auditor']} | Auditee: {audit_data['Auditee']}")
             
-            # Looping setiap detail item yang Non-OK
+            # Iterasi setiap item temuan
             for i, item in enumerate(audit_data['Detail']):
                 if item['status'] != 'OK':
                     # Inisialisasi status CAPA jika belum ada
                     if 'capa_status' not in item:
-                        item['capa_status'] = 'Open' # Default awal
+                        item['capa_status'] = 'Open'
                     
                     with st.container(border=True):
-                        c1, c2 = st.columns([1, 1])
+                        col_info, col_action = st.columns([1, 1])
                         
-                        with c1:
+                        with col_info:
                             st.error(f"**Temuan:** {item['kriteria']} ({item['status']})")
                             st.write(f"**Catatan Auditor:** {item['note']}")
-                            st.write(f"**Status Saat Ini:** `{item['capa_status']}`")
-                            if item['photo'] is not None:
-                                st.image(item['photo'], caption="Foto Temuan", width=150)
+                            st.write(f"**Status:** `{item['capa_status']}`")
+                            if item.get('photo'):
+                                st.image(item['photo'], caption="Bukti Temuan (Before)", width=200)
 
-                        with c2:
-                            # --- BAGIAN AUDITEE: Submit Perbaikan ---
+                        with col_action:
+                            # --- VIEW UNTUK AUDITEE (Jika status Open atau Rejected) ---
                             if item['capa_status'] in ['Open', 'Rejected']:
-                                st.subheader("📤 Submit Perbaikan (Auditee)")
-                                item['capa_action'] = st.text_area("Tindakan Perbaikan", key=f"act_{idx_hist}_{i}")
-                                item['capa_photo_after'] = st.file_uploader("Foto Bukti Perbaikan", key=f"paf_{idx_hist}_{i}")
-                                if st.button("Kirim untuk Approval", key=f"btn_sub_{idx_hist}_{i}"):
-                                    item['capa_status'] = 'Pending Approval'
-                                    st.rerun()
-                            
-                            # --- BAGIAN AUDITOR: Approval ---
-                            elif item['capa_status'] == 'Pending Approval':
-                                st.subheader("✅ Verifikasi (Auditor)")
-                                st.write(f"**Tindakan Auditee:** {item.get('capa_action', '-')}")
-                                if item.get('capa_photo_after'):
-                                    st.image(item['capa_photo_after'], caption="Bukti Perbaikan", width=150)
+                                st.subheader("📤 Submit Perbaikan")
+                                capa_text = st.text_area("Tindakan yang dilakukan", key=f"txt_{idx_hist}_{i}")
+                                capa_img = st.file_uploader("Upload Foto Perbaikan", key=f"img_{idx_hist}_{i}")
                                 
-                                ca1, ca2 = st.columns(2)
-                                if ca1.button("✔️ Approve", key=f"app_{idx_hist}_{i}", type="primary"):
+                                if st.button("Kirim ke Auditor", key=f"btn_send_{idx_hist}_{i}"):
+                                    if capa_text:
+                                        item['capa_action'] = capa_text
+                                        item['capa_photo_after'] = capa_img
+                                        item['capa_status'] = 'Pending Approval'
+                                        st.success("Terkirim! Menunggu pengecekan Auditor.")
+                                        st.rerun()
+                                    else:
+                                        st.warning("Mohon isi deskripsi perbaikan.")
+
+                            # --- VIEW UNTUK AUDITOR (Pengecekan sebelum Approved) ---
+                            elif item['capa_status'] == 'Pending Approval':
+                                st.subheader("🧐 Verifikasi Auditor")
+                                st.warning("Silakan cek bukti perbaikan di bawah ini sebelum Approve.")
+                                st.write(f"**Tindakan Auditee:** {item.get('capa_action', '-')}")
+                                
+                                if item.get('capa_photo_after'):
+                                    st.image(item['capa_photo_after'], caption="Bukti Perbaikan (After)", width=200)
+                                
+                                c_app, c_rej = st.columns(2)
+                                if c_app.button("✔️ Approve (Selesai)", key=f"app_{idx_hist}_{i}", type="primary"):
                                     item['capa_status'] = 'Closed'
+                                    st.success("Item telah Approved & Closed.")
                                     st.rerun()
-                                if ca2.button("❌ Reject", key=f"rej_{idx_hist}_{i}"):
+                                    
+                                if c_rej.button("❌ Reject (Perbaiki Lagi)", key=f"rej_{idx_hist}_{i}"):
                                     item['capa_status'] = 'Rejected'
+                                    st.error("Perbaikan ditolak. Auditee harus mengirim ulang.")
                                     st.rerun()
-                            
-                            # --- STATUS CLOSED ---
+
+                            # --- VIEW JIKA SUDAH SELESAI ---
                             elif item['capa_status'] == 'Closed':
-                                st.success("✅ Perbaikan telah Disetujui (Closed)")
+                                st.success("✅ Terverifikasi & Closed")
                                 st.write(f"**Tindakan:** {item.get('capa_action')}")
+                                if item.get('capa_photo_after'):
+                                    st.image(item['capa_photo_after'], caption="Bukti Final", width=200)
         else:
-            st.success("Semua audit dalam kondisi baik (Semua OK).")
+            st.success("Tidak ada temuan pada laporan ini.")
     else:
         st.info("Belum ada histori audit.")
 
