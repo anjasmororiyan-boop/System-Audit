@@ -129,58 +129,83 @@ elif menu == "📅 Initiation & Scheduling":
 elif menu == "📊 Dashboard & Outstanding":
     st.title("📊 Dashboard Utama & Monitoring")
 
-    # --- BAGIAN 1: KPI METRICS (DIPISAHKAN) ---
+    # --- BAGIAN 1: KPI METRICS (DIPERBAIKI) ---
     st.subheader("📋 Ringkasan Status Audit & CAPA")
     
-    # 1. Hitung Qty Jadwal
+    # Menghitung Qty Jadwal dari database utama
     total_jadwal = len(st.session_state.audit_schedules)
-    total_selesai = len([s for s in st.session_state.audit_schedules if s['Status'] == "Completed"])
-    qty_outstanding = len([s for s in st.session_state.audit_schedules if s['Status'] == "Outstanding"])
+    total_selesai = len(st.session_state.audit_history)
+    qty_outstanding = len([s for s in st.session_state.audit_schedules if s.get('Status') == "Outstanding"])
     
-    # 2. Hitung Qty Perbaikan (CAPA)
-    qty_belum_perbaikan = 0  # Tanggung jawab Auditee (Status: Open/Rejected)
-    qty_menunggu_approval = 0 # Tanggung jawab Auditor (Status: Pending Approval)
+    # Menghitung Qty Perbaikan (CAPA) yang belum selesai
+    qty_belum_perbaikan = 0  # Tanggung jawab Auditee
+    qty_menunggu_approval = 0 # Tanggung jawab Auditor
     
     if st.session_state.audit_history:
         for audit in st.session_state.audit_history:
-            for item in audit['Detail']:
-                if item['status'] != 'OK':
+            for item in audit.get('Detail', []):
+                # Hanya hitung item yang statusnya bukan OK
+                if item.get('status') != 'OK':
                     status_capa = item.get('capa_status', 'Open')
+                    
                     if status_capa in ['Open', 'Rejected']:
                         qty_belum_perbaikan += 1
                     elif status_capa == 'Pending Approval':
                         qty_menunggu_approval += 1
 
-    # --- Tampilan Qty dalam 4 Kolom Metric ---
+    # Tampilan 4 Kolom Metric
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total Jadwal", f"{total_jadwal} Laporan")
-    m2.metric("Selesai (Done)", f"{total_selesai} Laporan")
+    m1.metric("Total Jadwal", f"{total_jadwal}")
+    m2.metric("Selesai (Completed)", f"{total_selesai}")
     
-    # Menampilkan Qty Outstanding dengan warna peringatan
-    m3.metric("Pending Audit", f"{qty_outstanding} Tugas", delta="Outstanding", delta_color="inverse")
+    # Menampilkan jumlah audit yang masih pending (Outstanding)
+    m3.metric("Pending Audit", f"{qty_outstanding} Jadwal", delta_color="inverse")
     
-    # Menampilkan Qty Approval yang tertunda
-    m4.metric("Pending Approval", f"{qty_menunggu_approval} Item", delta="Verifikasi Auditor", delta_color="normal")
+    # Menampilkan total item temuan yang belum di-approve
+    total_pending_capa = qty_belum_perbaikan + qty_menunggu_approval
+    m4.metric("Pending Perbaikan", f"{total_pending_capa} Item", delta=f"{qty_menunggu_approval} butuh Approval", delta_color="normal")
 
     st.divider()
 
-    # --- BAGIAN 2: GRAFIK KOMPARASI ---
-    # (Kode grafik tetap sama seperti sebelumnya untuk membandingkan Judul/Lokasi)
+    # --- BAGIAN 2: GRAFIK KOMPARASI (MEMASTIKAN TIPE MUNCUL) ---
     if st.session_state.audit_history:
         st.subheader("📈 Komparasi Hasil Audit")
         df_hist = pd.DataFrame(st.session_state.audit_history)
         
-        c_f1, c_f2 = st.columns(2)
-        with c_f1:
-            sel_lokasi = st.multiselect("Pilih Lokasi", df_hist['Lokasi'].unique(), default=df_hist['Lokasi'].unique())
-        with c_f2:
-            sel_judul = st.multiselect("Pilih Judul Audit", df_hist['Audit_Title'].unique(), default=df_hist['Audit_Title'].unique())
+        # Pastikan kolom Tipe tersedia
+        if 'Tipe' in df_hist.columns:
+            c_f1, c_f2, c_f3 = st.columns(3)
+            with c_f1:
+                sel_lokasi = st.multiselect("Lokasi", df_hist['Lokasi'].unique(), default=df_hist['Lokasi'].unique())
+            with c_f2:
+                sel_tipe = st.multiselect("Tipe Audit", df_hist['Tipe'].unique(), default=df_hist['Tipe'].unique())
+            with c_f3:
+                sel_judul = st.multiselect("Judul Audit", df_hist['Audit_Title'].unique(), default=df_hist['Audit_Title'].unique())
+                
+            # Filter Data
+            df_filtered = df_hist[
+                (df_hist['Lokasi'].isin(sel_lokasi)) & 
+                (df_hist['Tipe'].isin(sel_tipe)) & 
+                (df_hist['Audit_Title'].isin(sel_judul))
+            ]
             
-        df_filtered = df_hist[(df_hist['Lokasi'].isin(sel_lokasi)) & (df_hist['Audit_Title'].isin(sel_judul))]
-        
-        if not df_filtered.empty:
-            fig = px.bar(df_filtered, x="Audit_Title", y="Skor", color="Lokasi", barmode="group", text="Skor")
-            st.plotly_chart(fig, use_container_width=True)
+            if not df_filtered.empty:
+                fig = px.bar(
+                    df_filtered, 
+                    x="Audit_Title", 
+                    y="Skor", 
+                    color="Tipe", # Mengelompokkan warna berdasarkan Tipe Audit
+                    barmode="group",
+                    text="Skor",
+                    title="Tren Skor Berdasarkan Tipe Audit"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("Pilih minimal satu kriteria pada filter di atas.")
+        else:
+            st.error("Data 'Tipe' tidak ditemukan dalam histori. Pastikan Tipe diisi saat inisiasi.")
+    else:
+        st.info("Belum ada riwayat audit untuk ditampilkan pada grafik.")
 
     st.divider()
 
