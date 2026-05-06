@@ -117,9 +117,11 @@ elif menu == "📊 Dashboard & Outstanding":
 elif menu == "📝 Execution (Phase 3)":
     st.title("📝 Eksekusi Audit")
     
-    # Inisialisasi state lokal untuk menyimpan hasil hitung sementara
-    if 'temp_results' not in st.session_state:
-        st.session_state.temp_results = None
+    # Inisialisasi state untuk mengunci hasil hitung agar tidak reset
+    if 'audit_submitted' not in st.session_state:
+        st.session_state.audit_submitted = False
+    if 'current_summary' not in st.session_state:
+        st.session_state.current_summary = None
 
     outstanding = [s['Audit_Title'] for s in st.session_state.audit_schedules if s['Status'] == "Outstanding"]
     
@@ -130,70 +132,84 @@ elif menu == "📝 Execution (Phase 3)":
         
         if key in st.session_state.master_templates:
             checklist = st.session_state.master_templates[key]
-            current_audit_results = []
             
-            # Form Pengisian Audit
+            # Form Audit
+            results = []
             for i, item in enumerate(checklist):
                 with st.container(border=True):
                     st.write(f"**{item['No']}. {item['Kriteria']}**")
                     c1, c2, c3 = st.columns([1, 2, 1])
+                    # Gunakan index untuk menjaga nilai radio button agar tidak reset
                     status = c1.radio("Status", ["OK", "Minor", "Major", "Kritis"], key=f"ex_s_{i}")
                     note = c2.text_area("Temuan", key=f"ex_n_{i}")
                     photo = c3.file_uploader("Foto", type=['jpg','png'], key=f"ex_p_{i}")
-                    current_audit_results.append({"kriteria": item['Kriteria'], "status": status, "note": note, "photo": photo})
+                    results.append({"kriteria": item['Kriteria'], "status": status, "note": note, "photo": photo})
             
-            # Tombol Hitung
-            if st.button("Selesaikan Audit & Hitung Scoring"):
-                skor, grade, pinalti = calculate_score(current_audit_results)
-                # Simpan ke session state agar tidak hilang saat tombol simpan muncul
-                st.session_state.temp_results = {
+            st.divider()
+            
+            # Tombol 1: Hitung Scoring
+            if st.button("📊 Selesaikan Audit & Hitung Scoring"):
+                skor, grade, pinalti = calculate_score(results)
+                st.session_state.current_summary = {
                     "skor": skor, 
                     "grade": grade, 
                     "pinalti": pinalti, 
-                    "results": current_audit_results
+                    "detail": results
                 }
+                st.session_state.audit_submitted = True
 
-            # Tampilkan Summary jika data sudah dihitung
-            if st.session_state.temp_results:
-                tr = st.session_state.temp_results
-                st.divider()
-                st.subheader("📋 Summary Hasil Audit")
+            # Tampilkan Summary & Tanda Tangan HANYA JIKA sudah dihitung
+            if st.session_state.audit_submitted and st.session_state.current_summary:
+                summary = st.session_state.current_summary
                 
-                sum_c1, sum_c2, sum_c3 = st.columns(3)
-                sum_c1.metric("SKOR AKHIR", tr['skor'])
-                sum_c2.metric("GRADE", tr['grade'])
-                sum_c3.write(f"**Detail Pinalti:**")
-                sum_c3.write(f"Minor: {tr['pinalti'][0]} | Major: {tr['pinalti'][1]} | Kritis: {tr['pinalti'][2]}")
-                
-                st.write("---")
-                st.write("**PENGESAHAN (Tanda Tangan Digital)**")
-                sig1, sig2 = st.columns(2)
-                auditor_sign = sig1.text_input("Nama Auditor", value=task['Auditor'])
-                auditee_sign = sig2.text_input("Nama Auditee", value=task['Auditee'])
-                
-                if st.button("Simpan Laporan Final"):
-                    # Masukkan ke history
-                    final_data = {
-                        **task, 
-                        "Skor": tr['skor'], 
-                        "Grade": tr['grade'], 
-                        "Detail": tr['results'], 
-                        "Tgl_Audit": str(datetime.now().date()), 
-                        "Audit_ID": f"AUD-{datetime.now().strftime('%H%M%S')}"
-                    }
-                    st.session_state.audit_history.append(final_data)
+                with st.container(border=True):
+                    st.subheader("📋 Summary Hasil Audit")
+                    sc1, sc2, sc3 = st.columns(3)
+                    sc1.metric("SKOR AKHIR", summary['skor'])
+                    sc2.metric("GRADE", summary['grade'])
                     
-                    # Update status jadwal
-                    task['Status'] = "Completed"
+                    # Detail Pinalti
+                    p = summary['pinalti']
+                    sc3.markdown(f"""
+                    **Detail Temuan:**
+                    *   Minor: {p[0]}
+                    *   Major: {p[1]}
+                    *   Kritis: {p[2]}
+                    """)
                     
-                    # Reset temp_results agar bersih untuk audit berikutnya
-                    st.session_state.temp_results = None
+                    st.write("---")
+                    st.write("**PENGESAHAN (Tanda Tangan Digital)**")
+                    sig1, sig2 = st.columns(2)
+                    auditor_name = sig1.text_input("Nama Auditor", value=task['Auditor'])
+                    auditee_name = sig2.text_input("Nama Auditee", value=task['Auditee'])
                     
-                    st.success("Laporan Final Berhasil Disimpan!")
-                    st.rerun()
-                    
+                    # Tombol 2: Simpan Final
+                    if st.button("💾 Simpan Laporan Final"):
+                        # Masukkan ke history
+                        final_report = {
+                            **task,
+                            "Audit_ID": f"AUD-{datetime.now().strftime('%H%M%S')}",
+                            "Skor": summary['skor'],
+                            "Grade": summary['grade'],
+                            "Detail": summary['detail'],
+                            "Tgl_Audit": str(datetime.now().date()),
+                            "Auditor": auditor_name,
+                            "Auditee": auditee_name
+                        }
+                        st.session_state.audit_history.append(final_report)
+                        
+                        # Tandai jadwal selesai
+                        task['Status'] = "Completed"
+                        
+                        # Reset state agar siap untuk audit berikutnya
+                        st.session_state.audit_submitted = False
+                        st.session_state.current_summary = None
+                        
+                        st.success("✅ Laporan Berhasil Disimpan ke History!")
+                        st.rerun()
+
         else: 
-            st.error(f"Form Master '{key}' belum ada. Silakan upload di Module Master.")
+            st.error(f"Form Master '{key}' belum tersedia. Upload di Module Master!")
     else: 
         st.info("Tidak ada jadwal audit outstanding.")
 
