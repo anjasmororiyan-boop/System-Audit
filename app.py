@@ -89,29 +89,88 @@ elif menu == "📅 Initiation & Scheduling":
             st.session_state.audit_schedules.append(d)
         st.success("Jadwal Berhasil Ditambahkan!")
 
-# --- 6. MODULE: DASHBOARD ---
+# --- 6. MODULE: DASHBOARD & OUTSTANDING ---
 elif menu == "📊 Dashboard & Outstanding":
-    st.title("📊 Dashboard Utama")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("📌 Outstanding Task")
-        if st.session_state.audit_schedules:
-            for i, task in enumerate(st.session_state.audit_schedules):
-                if task['Status'] == "Outstanding":
-                    with st.expander(f"🕒 {task['Audit_Title']} - {task['Lokasi']}"):
-                        st.write(f"Auditee: {task['Auditee']}")
-                        if st.button("🗑️ Hapus", key=f"del_{i}"):
-                            st.session_state.audit_schedules.pop(i)
-                            st.rerun()
-        else: st.info("Kosong")
+    st.title("📊 Dashboard Utama & Monitoring")
+
+    # --- BAGIAN 1: METRIC CARDS (Ringkasan Status) ---
+    st.subheader("📋 Ringkasan Status Audit")
     
-    with c2:
-        st.subheader("📈 Performance Grade")
-        if st.session_state.audit_history:
-            df_hist = pd.DataFrame(st.session_state.audit_history)
-            fig = px.bar(df_hist, x="Lokasi", y="Skor", color="Grade", barmode="group", title="Hasil Audit per Lokasi")
+    # Hitung data untuk metrics
+    total_jadwal = len(st.session_state.audit_schedules)
+    total_selesai = len([s for s in st.session_state.audit_schedules if s['Status'] == "Completed"])
+    total_outstanding = len([s for s in st.session_state.audit_schedules if s['Status'] == "Outstanding"])
+    
+    # Hitung jumlah temuan yang belum dilakukan perbaikan (Phase 6)
+    # Kriteria: Audit sudah selesai, ada temuan Non-OK, tapi belum ada input di Remediation
+    temuan_belum_perbaikan = 0
+    if st.session_state.audit_history:
+        for audit in st.session_state.audit_history:
+            for item in audit['Detail']:
+                if item['status'] != 'OK':
+                    # Logika: Jika fup_after (dari Phase 6) masih kosong, berarti belum diperbaiki
+                    if 'capa_action' not in item or not item['capa_action']:
+                        temuan_belum_perbaikan += 1
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Jadwal", total_jadwal)
+    m2.metric("Selesai (Completed)", total_selesai)
+    m3.metric("Outstanding", total_outstanding, delta_color="inverse")
+    m4.metric("Belum Perbaiki", temuan_belum_perbaikan, delta_color="inverse")
+
+    st.divider()
+
+    # --- BAGIAN 2: KOMPARASI GRAFIK ---
+    st.subheader("📈 Komparasi Hasil Audit")
+    
+    if st.session_state.audit_history:
+        df_hist = pd.DataFrame(st.session_state.audit_history)
+        
+        # Fitur Multi-select untuk Filter Lokasi & Tipe
+        c_filt1, c_filt2 = st.columns(2)
+        with c_filt1:
+            list_lokasi = df_hist['Lokasi'].unique().tolist()
+            sel_lokasi = st.multiselect("Pilih Lokasi untuk Dibandingkan", list_lokasi, default=list_lokasi)
+        with c_filt2:
+            list_tipe = df_hist['Tipe'].unique().tolist()
+            sel_tipe = st.multiselect("Pilih Tipe Audit", list_tipe, default=list_tipe)
+        
+        # Filter Data berdasarkan Pilihan User
+        df_filtered = df_hist[(df_hist['Lokasi'].isin(sel_lokasi)) & (df_hist['Tipe'].isin(sel_tipe))]
+        
+        if not df_filtered.empty:
+            # Grafik Komparasi: Menampilkan tren skor berdasarkan Tanggal & Lokasi
+            fig = px.bar(
+                df_filtered, 
+                x="Tgl_Audit", 
+                y="Skor", 
+                color="Lokasi", 
+                barmode="group",
+                hover_data=["Audit_Title", "Auditee", "Grade"],
+                title="Perbandingan Skor Audit (Berdasarkan Lokasi & Waktu)"
+            )
             st.plotly_chart(fig, use_container_width=True)
-        else: st.info("Belum ada data grafik.")
+        else:
+            st.warning("Tidak ada data yang cocok dengan filter pilihan Anda.")
+    else:
+        st.info("Belum ada riwayat audit untuk ditampilkan pada grafik.")
+
+    st.divider()
+
+    # --- BAGIAN 3: DAFTAR OUTSTANDING ---
+    st.subheader("📌 Detail Jadwal Outstanding")
+    if total_outstanding > 0:
+        for i, task in enumerate(st.session_state.audit_schedules):
+            if task['Status'] == "Outstanding":
+                with st.expander(f"🕒 {task['Audit_Title']} - {task['Lokasi']} ({task['Tipe']})"):
+                    col_info, col_del = st.columns([4, 1])
+                    col_info.write(f"**Auditor:** {task['Auditor']} | **Auditee:** {task['Auditee']} | **Target:** {task['Tanggal']}")
+                    if col_del.button("🗑️ Hapus Jadwal", key=f"del_sch_{i}"):
+                        st.session_state.audit_schedules.pop(i)
+                        st.success("Jadwal dihapus.")
+                        st.rerun()
+    else:
+        st.info("Semua jadwal telah selesai dikerjakan.")
 
 # --- 7. MODULE: EXECUTION (PHASE 3) ---
 elif menu == "📝 Execution (Phase 3)":
