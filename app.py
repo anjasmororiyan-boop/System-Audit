@@ -235,3 +235,46 @@ elif menu == "🛠️ Remediation (Phase 6)":
             if st.button("Kirim Laporan Perbaikan"):
                 # Di sini Anda bisa menambahkan logika untuk mengubah status menjadi 'Closed' atau mengirim notifikasi
                 st.success(f"Berhasil! Perbaikan untuk {sel_hist} telah dikirim ke Auditor untuk verifikasi ulang.")
+# --- 9. MODULE: AUDIT REPORT (DETAIL HISTORY) ---
+elif menu == "📄 Audit Report (Detail)":
+    st.title("📄 Laporan Detail & Scoring")
+    
+    if not st.session_state.audit_history:
+        st.info("Belum ada laporan audit yang tersimpan.")
+    else:
+        # Pilihan laporan yang ingin dilihat detailnya
+        report_options = [f"{a['Tgl_Audit']} - {a['Audit_Title']} ({a['Lokasi']})" for a in st.session_state.audit_history]
+        sel_report = st.selectbox("Pilih Laporan untuk Dilihat", report_options)
+        
+        # Ambil data spesifik
+        idx = report_options.index(sel_report)
+        report_data = st.session_state.audit_history[idx]
+        
+        # Header Laporan
+        st.divider()
+        c1, c2 = st.columns(2)
+        with c1:
+            st.write(f"**ID Audit:** {report_data['Audit_ID']}")
+            st.write(f"**Tipe Audit:** {report_data['Tipe']}")
+            st.write(f"**Auditor:** {report_data['Auditor']}")
+        with c2:
+            st.write(f"**Lokasi:** {report_data['Lokasi']}")
+            st.write(f"**Auditee:** {report_data['Auditee']}")
+            st.write(f"**Tanggal:** {report_data['Tgl_Audit']}")
+        
+        # Scoring Summary
+        st.subheader("Summary Scoring")
+        sc1, sc2, sc3 = st.columns(3)
+        sc1.metric("SKOR AKHIR", report_data['Skor'])
+        sc2.metric("GRADE", report_data['Grade'])
+        
+        # Tabel Detail Kriteria
+        st.subheader("Detail Temuan per Item")
+        df_detail = pd.DataFrame(report_data['Detail'])
+        st.dataframe(df_detail[['kriteria', 'status', 'note']], use_container_width=True)
+        
+        # Tombol Hapus Laporan (Opsional)
+        if st.button("🗑️ Hapus Laporan Ini dari History"):
+            st.session_state.audit_history.pop(idx)
+            st.success("Laporan berhasil dihapus.")
+            st.rerun()
