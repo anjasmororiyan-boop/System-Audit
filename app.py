@@ -174,8 +174,15 @@ elif menu == "📊 Dashboard & Outstanding":
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("📌 Outstanding Task")
-        df_out = pd.DataFrame([s for s in st.session_state.audit_schedules if s['Status'] == "Outstanding"])
-        st.dataframe(df_out, use_container_width=True) if not df_out.empty else st.info("Kosong")
+        # Pastikan menggunakan sintaks if-else yang benar untuk menampilkan dataframe
+        if 'audit_schedules' in st.session_state and st.session_state.audit_schedules:
+            df_out = pd.DataFrame([s for s in st.session_state.audit_schedules if s['Status'] == "Outstanding"])
+            if not df_out.empty:
+                st.dataframe(df_out, use_container_width=True)
+            else:
+                st.info("Tidak ada tugas outstanding.")
+        else:
+            st.info("Belum ada jadwal audit.")
         
     with c2:
         st.subheader("📈 Performance Grade")
@@ -183,20 +190,5 @@ elif menu == "📊 Dashboard & Outstanding":
             df_hist = pd.DataFrame(st.session_state.audit_history)
             fig = px.bar(df_hist, x="Lokasi", y="Skor", color="Grade", barmode="group")
             st.plotly_chart(fig, use_container_width=True)
-
-# --- 8. MODULE: REMEDIATION ---
-elif menu == "🛠️ Remediation (Phase 6)":
-    st.title("🛠️ Perbaikan Temuan")
-    if st.session_state.audit_history:
-        sel_hist = st.selectbox("Pilih Audit", [a['Audit_Title'] for a in st.session_state.audit_history])
-        audit_data = next(a for a in st.session_state.audit_history if a['Audit_Title'] == sel_hist)
-        
-        findings = [d for d in audit_data['Detail'] if d['status'] != 'OK']
-        for i, f in enumerate(findings):
-            with st.expander(f"TEMUAN: {f['kriteria']} ({f['status']})"):
-                st.write(f"Catatan: {f['note']}")
-                st.text_area("Tindakan Korektif", key=f"fix_{i}")
-                st.file_uploader("Upload Bukti Perbaikan", key=f"fup_{i}")
-        st.button("Update Status Perbaikan")
-    else:
-        st.info("Belum ada data audit.")
+        else:
+            st.info("Belum ada riwayat audit untuk ditampilkan.")
