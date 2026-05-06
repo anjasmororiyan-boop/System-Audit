@@ -117,65 +117,71 @@ elif menu == "📊 Dashboard & Outstanding":
 elif menu == "📝 Execution (Phase 3)":
     st.title("📝 Eksekusi Audit")
     
-    # Inisialisasi state untuk mengunci Summary
     if 'audit_finalized' not in st.session_state:
         st.session_state.audit_finalized = False
     if 'calculation_result' not in st.session_state:
         st.session_state.calculation_result = None
 
-    # Filter hanya jadwal yang berstatus Outstanding
     outstanding_tasks = [s for s in st.session_state.audit_schedules if s['Status'] == "Outstanding"]
     
     if outstanding_tasks:
-        # Pilihan jadwal
         task_options = [t['Audit_Title'] for t in outstanding_tasks]
         sel_task_title = st.selectbox("Pilih Jadwal Audit", task_options)
         
-        # Ambil referensi objek asli dari session_state agar perubahan status tersimpan permanen
         task_index = next(i for i, s in enumerate(st.session_state.audit_schedules) if s['Audit_Title'] == sel_task_title)
         task = st.session_state.audit_schedules[task_index]
-        
         key = f"{task['Tipe']}_{task['Lokasi']}"
         
         if key in st.session_state.master_templates:
             checklist = st.session_state.master_templates[key]
             
-            # Form Audit (Selalu tampil selama belum disave)
             current_results = []
             for i, item in enumerate(checklist):
                 with st.container(border=True):
                     st.write(f"**{item['No']}. {item['Kriteria']}**")
                     c1, c2, c3 = st.columns([1, 2, 1])
                     res_status = c1.radio("Status", ["OK", "Minor", "Major", "Kritis"], key=f"ex_s_{i}")
-                    res_note = c2.text_area("Temuan", key=f"ex_n_{i}")
-                    res_photo = c3.file_uploader("Foto", type=['jpg','png'], key=f"ex_p_{i}")
-                    current_results.append({"kriteria": item['Kriteria'], "status": res_status, "note": res_note, "photo": res_photo})
+                    res_note = c2.text_area("Temuan/Catatan", key=f"ex_n_{i}")
+                    res_photo = c3.file_uploader("Foto Bukti", type=['jpg','png'], key=f"ex_p_{i}")
+                    current_results.append({"no": item['No'], "kriteria": item['Kriteria'], "status": res_status, "note": res_note, "photo": res_photo})
             
             st.divider()
             
-            # Tombol 1: Hitung & Munculkan Summary
             if st.button("📊 Selesaikan Audit & Hitung Scoring"):
                 skor, grade, pinalti = calculate_score(current_results)
+                # Filter item yang terdapat temuan (Bukan OK)
+                daftar_temuan = [r for r in current_results if r['status'] != 'OK']
+                
                 st.session_state.calculation_result = {
                     "skor": skor, 
                     "grade": grade, 
                     "pinalti": pinalti, 
-                    "detail": current_results
+                    "detail": current_results,
+                    "temuan_list": daftar_temuan
                 }
                 st.session_state.audit_finalized = True
 
-            # TAMPILAN SUMMARY & TANDA TANGAN (Hanya muncul jika sudah hitung)
+            # --- BAGIAN SUMMARY YANG DIPERBAIKI ---
             if st.session_state.audit_finalized and st.session_state.calculation_result:
                 calc = st.session_state.calculation_result
                 
                 with st.container(border=True):
                     st.subheader("📋 Summary Hasil Audit")
-                    sc1, sc2, sc3 = st.columns(3)
+                    sc1, sc2, sc3 = st.columns([1, 1, 1])
                     sc1.metric("SKOR AKHIR", calc['skor'])
                     sc2.metric("GRADE", calc['grade'])
                     
                     p = calc['pinalti']
-                    sc3.markdown(f"**Pinalti:**\n- Minor: {p[0]}\n- Major: {p[1]}\n- Kritis: {p[2]}")
+                    sc3.markdown(f"**Total Pinalti:**\n- Minor: {p[0]}\n- Major: {p[1]}\n- Kritis: {p[2]}")
+                    
+                    # TAMBAHAN: Detail Item Temuan
+                    st.write("**Daftar Item Temuan:**")
+                    if calc['temuan_list']:
+                        df_temuan = pd.DataFrame(calc['temuan_list'])
+                        # Hanya menampilkan kolom No, Kriteria, Status, dan Catatan
+                        st.table(df_temuan[['no', 'kriteria', 'status', 'note']])
+                    else:
+                        st.success("Tidak ada temuan (Semua item OK).")
                     
                     st.write("---")
                     st.write("**PENGESAHAN (Tanda Tangan Digital)**")
@@ -183,9 +189,7 @@ elif menu == "📝 Execution (Phase 3)":
                     final_auditor = sig1.text_input("Nama Auditor", value=task['Auditor'])
                     final_auditee = sig2.text_input("Nama Auditee", value=task['Auditee'])
                     
-                    # Tombol 2: SIMPAN FINAL (Ini yang akan menutup form & menyelesaikan outstanding)
                     if st.button("💾 Simpan Laporan Final"):
-                        # 1. Simpan ke History
                         st.session_state.audit_history.append({
                             **task,
                             "Audit_ID": f"AUD-{datetime.now().strftime('%H%M%S')}",
@@ -196,23 +200,16 @@ elif menu == "📝 Execution (Phase 3)":
                             "Auditor": final_auditor,
                             "Auditee": final_auditee
                         })
-                        
-                        # 2. Update status jadwal di session_state asli
                         st.session_state.audit_schedules[task_index]['Status'] = "Completed"
-                        
-                        # 3. Reset state agar form tertutup
                         st.session_state.audit_finalized = False
                         st.session_state.calculation_result = None
-                        
-                        st.success("✅ Laporan Berhasil Disimpan! Status Outstanding Selesai.")
-                        
-                        # 4. Trigger rerun agar UI Dashboard & Execution terupdate
+                        st.success("✅ Laporan Berhasil Disimpan!")
                         st.rerun()
 
         else: 
-            st.error(f"Form Master '{key}' belum tersedia. Silakan upload di Module Master.")
+            st.error(f"Form Master '{key}' belum tersedia.")
     else: 
-        st.info("Semua jadwal audit telah selesai atau belum ada jadwal outstanding.")
+        st.info("Tidak ada jadwal outstanding.")
 
 # --- 8. MODULE: REMEDIATION (PHASE 6) ---
 elif menu == "🛠️ Remediation (Phase 6)":
