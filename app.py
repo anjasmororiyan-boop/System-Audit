@@ -192,3 +192,46 @@ elif menu == "📊 Dashboard & Outstanding":
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Belum ada riwayat audit untuk ditampilkan.")
+# --- 8. MODULE: REMEDIATION (PHASE 6) ---
+elif menu == "🛠️ Remediation (Phase 6)":
+    st.title("🛠️ Perbaikan Temuan (CAPA)")
+    st.info("Halaman ini digunakan oleh Auditee untuk mengunggah bukti perbaikan pada temuan yang berstatus Non-OK.")
+
+    if not st.session_state.audit_history:
+        st.warning("Peringatan: Belum ada histori audit. Selesaikan proses di Module Execution terlebih dahulu.")
+    else:
+        # Filter hanya audit yang memiliki temuan (Bukan OK)
+        audit_with_findings = [a['Audit_Title'] for a in st.session_state.audit_history 
+                               if any(d['status'] != 'OK' for d in a['Detail'])]
+        
+        if not audit_with_findings:
+            st.success("🎉 Luar biasa! Semua audit saat ini berstatus 'Lulus' tanpa temuan.")
+        else:
+            sel_hist = st.selectbox("Pilih Laporan Audit untuk Diperbaiki", audit_with_findings)
+            
+            # Ambil data audit yang dipilih
+            audit_data = next(a for a in st.session_state.audit_history if a['Audit_Title'] == sel_hist)
+            
+            st.markdown(f"**PIC Auditee:** {audit_data['Auditee']} | **Tanggal Audit:** {audit_data['Tgl_Audit']}")
+            
+            # Tampilkan hanya kriteria yang statusnya Minor, Major, atau Kritis
+            findings = [d for d in audit_data['Detail'] if d['status'] != 'OK']
+            
+            for i, f in enumerate(findings):
+                with st.container(border=True):
+                    c1, c2 = st.columns([1, 1])
+                    with c1:
+                        st.error(f"**Temuan {i+1}:** {f['kriteria']}")
+                        st.write(f"**Status:** {f['status']}")
+                        st.write(f"**Catatan Auditor:** {f['note']}")
+                        if f['photo'] is not None:
+                            st.image(f['photo'], caption="Bukti Foto Temuan (Before)", width=200)
+                    
+                    with c2:
+                        st.subheader("📝 Tindakan Perbaikan")
+                        st.text_area("Deskripsi Tindakan Korektif", key=f"capa_fix_{i}", placeholder="Jelaskan apa yang sudah diperbaiki...")
+                        st.file_uploader("Upload Bukti Perbaikan (After)", type=['png','jpg','jpeg'], key=f"fup_after_{i}")
+            
+            if st.button("Kirim Laporan Perbaikan"):
+                # Di sini Anda bisa menambahkan logika untuk mengubah status menjadi 'Closed' atau mengirim notifikasi
+                st.success(f"Berhasil! Perbaikan untuk {sel_hist} telah dikirim ke Auditor untuk verifikasi ulang.")
