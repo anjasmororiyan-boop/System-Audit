@@ -5,9 +5,9 @@ from datetime import datetime
 import io
 
 # --- 1. KONFIGURASI SISTEM ---
-st.set_page_config(page_title="Smart Audit Hub v2", layout="wide")
+st.set_page_config(page_title="Smart Audit Hub v3", layout="wide")
 
-# Inisialisasi Session State agar data tidak hilang saat pindah menu
+# Persistent Storage menggunakan Session State
 if 'master_templates' not in st.session_state:
     st.session_state.master_templates = {} 
 if 'audit_schedules' not in st.session_state:
@@ -15,9 +15,9 @@ if 'audit_schedules' not in st.session_state:
 if 'audit_history' not in st.session_state:
     st.session_state.audit_history = []
 if 'employee_db' not in st.session_state:
-    st.session_state.employee_db = pd.DataFrame(columns=['ID', 'Nama', 'Role', 'Unit'])
+    st.session_state.employee_db = pd.DataFrame(columns=['Nama', 'Role'])
 
-# --- 2. FUNGSI PENDUKUNG (UTILS) ---
+# --- 2. FUNGSI PENDUKUNG ---
 def calculate_score(results):
     max_score = 1000
     minor = sum(1 for r in results if r['status'] == 'Minor')
@@ -32,115 +32,93 @@ def calculate_score(results):
     elif final_score >= 610: grade = "C (Cukup)"
     else: grade = "D (Kurang)"
     
-    return final_score, grade
+    return final_score, grade, (minor, major, kritis)
 
 # --- 3. SIDEBAR NAVIGATION ---
 st.sidebar.title("🛡️ Smart Audit System")
-st.sidebar.info("Gunakan Module Master terlebih dahulu untuk mengisi data.")
 menu = st.sidebar.radio("Navigasi Module", [
     "📊 Dashboard & Outstanding",
-    "⚙️ Module Master (Data & Form)",
+    "⚙️ Module Master",
     "📅 Initiation & Scheduling",
     "📝 Execution (Phase 3)",
     "🛠️ Remediation (Phase 6)"
 ])
 
-# --- 4. MODULE: MASTER DATA ---
-if menu == "⚙️ Module Master (Data & Form)":
-    st.title("⚙️ Module Master: Pusat Pengaturan")
+# --- 4. MODULE: MASTER DATA (DATABASE FORM & EMPLOYEE) ---
+if menu == "⚙️ Module Master":
+    st.title("⚙️ Module Master: Pusat Database")
     
-    # Fitur Instan untuk Testing
-    if st.button("🚀 Inisialisasi Data Dummy (Klik ini untuk mencoba cepat)"):
-        # 1. Master Employee
-        st.session_state.employee_db = pd.DataFrame([
-            {'ID': 'EMP01', 'Nama': 'Riyan Anjasmoro', 'Role': 'Auditor', 'Unit': 'QHSE'},
-            {'ID': 'EMP02', 'Nama': 'Yuka', 'Role': 'Auditee', 'Unit': 'NICE Hub'},
-            {'ID': 'EMP03', 'Nama': 'Budi', 'Role': 'Auditee', 'Unit': 'Satelite PIK2'}
-        ])
-        # 2. Master Form GMP
-        gmp_form = [
-            {'Kategori': 'Kebersihan', 'No': '1.1', 'Kriteria': 'Lantai area produksi bersih dan tidak retak'},
-            {'Kategori': 'Personel', 'No': '1.2', 'Kriteria': 'Karyawan menggunakan APD lengkap'},
-            {'Kategori': 'Fasilitas', 'No': '1.3', 'Kriteria': 'Tersedia tempat cuci tangan yang memadai'}
-        ]
-        st.session_state.master_templates["GMP_NICE Hub"] = gmp_form
-        st.success("Data Dummy (Employee & Form GMP) berhasil dimuat!")
-
-    tab1, tab2 = st.tabs(["Manajemen Employee", "Master Form Audit"])
+    tab1, tab2 = st.tabs(["Master Form Audit", "Master Employee"])
     
     with tab1:
+        st.subheader("Upload & Simpan Master Form")
+        st.info("Template ini akan disimpan secara permanen berdasarkan Tipe & Lokasi.")
+        c1, c2 = st.columns(2)
+        with c1:
+            t_audit = st.selectbox("Tipe Audit", ["GMP", "SQA", "ISO", "K3"])
+            l_audit = st.selectbox("Lokasi Mapping", ["NICE Hub", "Satelite Kitchen", "Central Kitchen"])
+            uploaded_file = st.file_uploader("Upload Master CSV/Excel", type=["csv", "xlsx"])
+            
+            if uploaded_file and st.button("Simpan ke Database Form"):
+                if uploaded_file.name.endswith('.csv'):
+                    df = pd.read_csv(uploaded_file, sep=None, engine='python')
+                else:
+                    df = pd.read_excel(uploaded_file)
+                
+                # Simpan permanen ke session state
+                st.session_state.master_templates[f"{t_audit}_{l_audit}"] = df.to_dict('records')
+                st.success(f"Form {t_audit} untuk {l_audit} berhasil disimpan dalam database.")
+
+    with tab2:
         st.subheader("Daftar Auditor & Auditee")
         new_emp = st.data_editor(st.session_state.employee_db, num_rows="dynamic", use_container_width=True)
-        if st.button("Simpan Data Employee"):
+        if st.button("Update Database Employee"):
             st.session_state.employee_db = new_emp
             st.success("Data Employee diperbarui.")
 
-    with tab2:
-        st.subheader("Upload & Mapping Master Form")
-        c1, c2 = st.columns(2)
-        with c1:
-            t_audit = st.selectbox("Tipe Audit", ["GMP", "SQA", "ISO"])
-            l_audit = st.selectbox("Lokasi Mapping", ["NICE Hub", "Satelite Kitchen", "Central Kitchen"])
-            uploaded_file = st.file_uploader("Upload CSV Template", type=["csv"])
-            if uploaded_file and st.button("Simpan Form"):
-                df = pd.read_csv(uploaded_file, sep=None, engine='python')
-                st.session_state.master_templates[f"{t_audit}_{l_audit}"] = df.to_dict('records')
-                st.success(f"Form {t_audit} untuk {l_audit} tersimpan!")
-        with c2:
-            st.write("Format CSV: `Kategori,No,Kriteria`")
-            csv_sample = "Kategori,No,Kriteria\nUmum,1,Area bersih\nFasilitas,2,Peralatan lengkap"
-            st.download_button("📥 Download Blank CSV", csv_sample, "template.csv")
-
 # --- 5. MODULE: INITIATION & SCHEDULING ---
 elif menu == "📅 Initiation & Scheduling":
-    st.title("📅 Inisiasi & Penjadwalan Audit")
+    st.title("📅 Inisiasi & Penjadwalan")
     
-    if st.session_state.employee_db.empty:
-        st.warning("⚠️ Data Employee kosong. Isi di Module Master!")
-    else:
-        with st.form("form_init"):
-            title = st.text_input("Judul Audit (Contoh: Audit Bulanan GMP)")
-            c1, c2 = st.columns(2)
-            t_audit = c1.selectbox("Tipe Audit", ["GMP", "SQA", "ISO"])
-            l_audit = c2.selectbox("Lokasi", ["NICE Hub", "Satelite Kitchen"])
-            
-            auditor_list = st.session_state.employee_db[st.session_state.employee_db['Role'] == 'Auditor']['Nama'].tolist()
-            auditee_list = st.session_state.employee_db[st.session_state.employee_db['Role'] == 'Auditee']['Nama'].tolist()
-            
-            auditor = c1.selectbox("Pilih Auditor", auditor_list if auditor_list else ["Isi Master Auditor!"])
-            auditee = c2.selectbox("Pilih Auditee (PIC)", auditee_list if auditee_list else ["Isi Master Auditee!"])
-            date_plan = st.date_input("Tanggal Pelaksanaan")
-            
-            if st.form_submit_button("Buat Jadwal (Outstanding)"):
-                new_sched = {
-                    "Audit_Title": title, "Tipe": t_audit, "Lokasi": l_audit,
-                    "Auditor": auditor, "Auditee": auditee, "Tanggal": str(date_plan),
-                    "Status": "Outstanding"
-                }
-                st.session_state.audit_schedules.append(new_sched)
-                st.success("Jadwal audit telah ditambahkan ke Dashboard!")
+    st.subheader("Import Jadwal Audit")
+    uploaded_sched = st.file_uploader("Upload File Jadwal (CSV)", type=["csv"])
+    if uploaded_sched and st.button("Proses Jadwal"):
+        df_sched = pd.read_csv(uploaded_sched, sep=None, engine='python')
+        for _, row in df_sched.iterrows():
+            row_dict = row.to_dict()
+            row_dict['Status'] = "Outstanding"
+            st.session_state.audit_schedules.append(row_dict)
+        st.success(f"{len(df_sched)} Jadwal masuk ke Outstanding Dashboard.")
+    
+    st.divider()
+    st.subheader("Input Manual")
+    with st.form("manual_init"):
+        title = st.text_input("Judul Audit")
+        c1, c2 = st.columns(2)
+        ta = c1.selectbox("Tipe", ["GMP", "SQA", "ISO"])
+        la = c2.selectbox("Lokasi", ["NICE Hub", "Satelite Kitchen"])
+        
+        auditor_list = st.session_state.employee_db[st.session_state.employee_db['Role'] == 'Auditor']['Nama'].tolist()
+        auditee_list = st.session_state.employee_db[st.session_state.employee_db['Role'] == 'Auditee']['Nama'].tolist()
+        
+        auditor = c1.selectbox("Auditor", auditor_list if auditor_list else ["Isi Master Employee!"])
+        auditee = c2.selectbox("Auditee (PIC)", auditee_list if auditee_list else ["Isi Master Employee!"])
+        
+        if st.form_submit_button("Simpan Jadwal"):
+            st.session_state.audit_schedules.append({
+                "Audit_Title": title, "Tipe": ta, "Lokasi": la,
+                "Auditor": auditor, "Auditee": auditee, "Status": "Outstanding"
+            })
+            st.success("Jadwal tersimpan.")
 
-# --- 6. MODULE: DASHBOARD ---
-elif menu == "📊 Dashboard & Outstanding":
-    st.title("📊 Outstanding Audit Tasks")
-    
-    outstanding = [s for s in st.session_state.audit_schedules if s['Status'] == "Outstanding"]
-    
-    if not outstanding:
-        st.info("Tidak ada jadwal audit outstanding. Silakan buat di Module Initiation.")
-    else:
-        st.subheader("📌 Tugas Audit yang Harus Diselesaikan")
-        df_out = pd.DataFrame(outstanding)
-        st.table(df_out[["Audit_Title", "Lokasi", "Auditor", "Auditee", "Tanggal"]])
-
-# --- 7. MODULE: EXECUTION ---
+# --- 6. MODULE: EXECUTION (CAMERA & SCORING) ---
 elif menu == "📝 Execution (Phase 3)":
     st.title("📝 Eksekusi Audit")
     
-    outstanding_titles = [s['Audit_Title'] for s in st.session_state.audit_schedules if s['Status'] == "Outstanding"]
+    outstanding = [s['Audit_Title'] for s in st.session_state.audit_schedules if s['Status'] == "Outstanding"]
     
-    if outstanding_titles:
-        sel_task = st.selectbox("Pilih Jadwal Audit", outstanding_titles)
+    if outstanding:
+        sel_task = st.selectbox("Pilih Jadwal Audit", outstanding)
         task = next(item for item in st.session_state.audit_schedules if item["Audit_Title"] == sel_task)
         
         key = f"{task['Tipe']}_{task['Lokasi']}"
@@ -148,38 +126,77 @@ elif menu == "📝 Execution (Phase 3)":
         if key in st.session_state.master_templates:
             checklist = st.session_state.master_templates[key]
             results = []
-            for i, item in enumerate(checklist):
-                with st.expander(f"{item['No']} - {item['Kriteria']}"):
-                    res = st.radio("Hasil", ["OK", "Minor", "Major", "Kritis"], key=f"r_{i}")
-                    note = st.text_area("Catatan", key=f"n_{i}")
-                    results.append({"kriteria": item['Kriteria'], "status": res, "note": note})
             
-            if st.button("Finalisasi Audit"):
-                skor, grade = calculate_score(results)
+            for i, item in enumerate(checklist):
+                with st.container(border=True):
+                    st.write(f"**{item['No']}. {item['Kriteria']}**")
+                    c1, c2, c3 = st.columns([1, 2, 1])
+                    status = c1.radio("Status", ["OK", "Minor", "Major", "Kritis"], key=f"s_{i}")
+                    note = c2.text_area("Catatan Temuan", key=f"n_{i}")
+                    
+                    # Fitur Kamera atau Upload Foto Temuan
+                    photo = c3.file_uploader("Foto Bukti", type=['png','jpg','jpeg'], key=f"p_{i}")
+                    
+                    results.append({"kriteria": item['Kriteria'], "status": status, "note": note, "photo": photo})
+            
+            if st.button("Selesaikan Audit & Hitung Skor"):
+                skor, grade, pinalti = calculate_score(results)
+                
+                st.divider()
+                st.subheader("📑 Ringkasan Temuan & Perhitungan")
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Skor Akhir", skor)
+                col2.metric("Grade", grade)
+                col3.write(f"Minor: {pinalti[0]} | Major: {pinalti[1]} | Kritis: {pinalti[2]}")
+                
+                # Lembar Tanda Tangan
+                st.write("---")
+                st.write("**PENGESAHAN LAPORAN**")
+                ts1, ts2 = st.columns(2)
+                ts1.text_input("Tanda Tangan Auditor (Ketik Nama)", value=task['Auditor'])
+                ts2.text_input("Tanda Tangan Auditee (Ketik Nama)", value=task['Auditee'])
+                
                 data_final = {
-                    **task, "Skor": skor, "Grade": grade, "Detail": results, "Tgl_Selesai": str(datetime.now())
+                    **task, "Skor": skor, "Grade": grade, "Detail": results, "Tgl_Audit": str(datetime.now().date())
                 }
                 st.session_state.audit_history.append(data_final)
                 task['Status'] = "Completed"
-                st.balloons()
-                st.success(f"Audit Berhasil! Skor: {skor} ({grade})")
+                st.success("Laporan telah ditandatangani dan disimpan dalam riwayat.")
         else:
-            st.error(f"Form Master '{key}' tidak ditemukan. Silakan mapping di Module Master.")
+            st.error(f"Form '{key}' tidak ditemukan di Database Master.")
     else:
-        st.info("Semua jadwal audit telah selesai atau belum ada jadwal.")
+        st.info("Tidak ada tugas audit.")
+
+# --- 7. MODULE: DASHBOARD ---
+elif menu == "📊 Dashboard & Outstanding":
+    st.title("📊 Dashboard Utama")
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("📌 Outstanding Task")
+        df_out = pd.DataFrame([s for s in st.session_state.audit_schedules if s['Status'] == "Outstanding"])
+        st.dataframe(df_out, use_container_width=True) if not df_out.empty else st.info("Kosong")
+        
+    with c2:
+        st.subheader("📈 Performance Grade")
+        if st.session_state.audit_history:
+            df_hist = pd.DataFrame(st.session_state.audit_history)
+            fig = px.bar(df_hist, x="Lokasi", y="Skor", color="Grade", barmode="group")
+            st.plotly_chart(fig, use_container_width=True)
 
 # --- 8. MODULE: REMEDIATION ---
 elif menu == "🛠️ Remediation (Phase 6)":
     st.title("🛠️ Perbaikan Temuan")
-    if not st.session_state.audit_history:
-        st.info("Belum ada temuan audit.")
-    else:
+    if st.session_state.audit_history:
         sel_hist = st.selectbox("Pilih Audit", [a['Audit_Title'] for a in st.session_state.audit_history])
         audit_data = next(a for a in st.session_state.audit_history if a['Audit_Title'] == sel_hist)
         
         findings = [d for d in audit_data['Detail'] if d['status'] != 'OK']
         for i, f in enumerate(findings):
-            st.error(f"Temuan: {f['kriteria']} ({f['status']})")
-            st.text_area("Tindakan Korektif", key=f"capa_{i}")
-            st.file_uploader("Upload Bukti", key=f"up_{i}")
-        st.button("Update CAPA")
+            with st.expander(f"TEMUAN: {f['kriteria']} ({f['status']})"):
+                st.write(f"Catatan: {f['note']}")
+                st.text_area("Tindakan Korektif", key=f"fix_{i}")
+                st.file_uploader("Upload Bukti Perbaikan", key=f"fup_{i}")
+        st.button("Update Status Perbaikan")
+    else:
+        st.info("Belum ada data audit.")
